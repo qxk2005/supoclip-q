@@ -18,7 +18,7 @@ import { track } from "@/lib/datafast";
 import { formatSupportMessage, parseApiError } from "@/lib/api-error";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush, Film, Sparkles, Upload, Monitor, Menu, X, LogOut, List, Shield,  Settings2,
+import { ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush, Film, Sparkles, Upload, Monitor, Menu, X, LogOut, List, Shield, Settings, Settings2,
   HelpCircle,
   Languages,
   Zap,
@@ -143,7 +143,7 @@ export default function Home() {
         cache: "no-store",
       });
       if (!response.ok) {
-        throw new Error(`Failed to load fonts (${response.status})`);
+        throw new Error(`加载字体失败（${response.status}）`);
       }
 
       const data = await response.json();
@@ -174,7 +174,7 @@ export default function Home() {
       document.head.appendChild(styleElement);
     } catch (error) {
       console.error("Failed to load fonts:", error);
-      setFontLoadError("Could not load fonts right now.");
+      setFontLoadError("暂时无法加载字体。");
     }
   }, []);
 
@@ -320,7 +320,7 @@ export default function Home() {
 
     const isSupported = file.name.toLowerCase().endsWith(".ttf") || file.name.toLowerCase().endsWith(".otf");
     if (!isSupported) {
-      setError("Only .ttf and .otf files are supported for custom fonts.");
+      setError("自定义字体仅支持 .ttf 与 .otf 格式。");
       return;
     }
 
@@ -336,7 +336,7 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const parsed = await parseApiError(response, "Failed to upload font");
+        const parsed = await parseApiError(response, "上传字体失败");
         setError(formatSupportMessage(parsed));
         return;
       }
@@ -348,7 +348,7 @@ export default function Home() {
       await refreshFonts();
     } catch (uploadError) {
       console.error("Failed to upload font:", uploadError);
-      setError("Failed to upload font. Please try again.");
+      setError("上传字体失败，请重试。");
     } finally {
       setIsUploadingFont(false);
     }
@@ -396,7 +396,7 @@ export default function Home() {
     if (sourceType === "youtube" && !url.trim()) return;
     if (!session?.user?.id) return;
     if (billingSummary?.monetization_enabled && !billingSummary.can_create_task) {
-      setError(billingSummary.reason || "Active subscription required to continue processing.");
+      setError(billingSummary.reason || "需要有效订阅才能继续处理。");
       return;
     }
 
@@ -416,7 +416,7 @@ export default function Home() {
 
       // If uploading file, upload it first
       if (sourceType === "upload" && fileRef.current) {
-        setStatusMessage("Uploading video file...");
+        setStatusMessage("正在上传视频…");
         setProgress(5);
 
         const formData = new FormData();
@@ -485,7 +485,7 @@ export default function Home() {
 
     } catch (error) {
       console.error('Error processing video:', error);
-      setError(error instanceof Error ? error.message : 'Failed to process video. Please try again.');
+      setError(error instanceof Error ? error.message : "处理视频失败，请重试。");
     } finally {
       setIsLoading(false);
       setProgress(0);
@@ -544,7 +544,7 @@ export default function Home() {
                         : "bg-stone-100 text-stone-600 border border-stone-200"
                     }`}
                   >
-                    {billingSummary.plan === "pro" ? "Pro" : "Free"}
+                    {billingSummary.plan === "pro" ? "Pro" : "免费"}
                   </Badge>
                   <div className="flex items-center gap-1.5">
                     <div className="w-16 h-1.5 bg-stone-200 rounded-full overflow-hidden">
@@ -572,18 +572,18 @@ export default function Home() {
               )}
               <Link href="/list">
                 <Button variant="outline" size="sm">
-                  All Generations
+                  全部生成
                 </Button>
               </Link>
               {isAdmin && (
                 <Link href="/admin">
                   <Button variant="outline" size="sm">
-                    Admin
+                    管理后台
                   </Button>
                 </Link>
               )}
               <Button variant="outline" size="sm" onClick={handleSignOut}>
-                Sign Out
+                退出登录
               </Button>
               <Link href="/settings" className="flex items-center gap-3 hover:bg-gray-50 rounded-lg px-3 py-2 transition-colors cursor-pointer">
                 <Avatar className="w-8 h-8">
@@ -609,7 +609,7 @@ export default function Home() {
                       : "bg-stone-100 text-stone-600 border border-stone-200"
                   }`}
                 >
-                  {billingSummary.plan === "pro" ? "Pro" : "Free"}
+                  {billingSummary.plan === "pro" ? "Pro" : "免费"}
                 </Badge>
               )}
               <Button
@@ -617,7 +617,7 @@ export default function Home() {
                 size="sm"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2"
-                aria-label="Toggle menu"
+                aria-label="切换菜单"
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </Button>
@@ -682,7 +682,7 @@ export default function Home() {
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 hover:bg-gray-50 transition-colors"
               >
                 <List className="w-4 h-4 text-stone-400" />
-                All Generations
+                全部生成
               </Link>
               {isAdmin && (
                 <Link
@@ -691,7 +691,7 @@ export default function Home() {
                   className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 hover:bg-gray-50 transition-colors"
                 >
                   <Shield className="w-4 h-4 text-stone-400" />
-                  Admin
+                  管理后台
                 </Link>
               )}
               <Link
@@ -700,7 +700,7 @@ export default function Home() {
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-stone-700 hover:bg-gray-50 transition-colors"
               >
                 <Settings className="w-4 h-4 text-stone-400" />
-                Settings
+                设置
               </Link>
 
               <Separator />
@@ -713,7 +713,7 @@ export default function Home() {
                 className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors w-full text-left"
               >
                 <LogOut className="w-4 h-4" />
-                Sign Out
+                退出登录
               </button>
             </div>
           </div>
@@ -737,9 +737,9 @@ export default function Home() {
                   <div className="flex items-center gap-2 text-xs text-stone-500 mt-0.5">
                     <span className="capitalize">{latestTask.source_type}</span>
                     <span>&middot;</span>
-                    <span>{new Date(latestTask.created_at).toLocaleDateString()}</span>
+                    <span>{new Date(latestTask.created_at).toLocaleDateString("zh-CN")}</span>
                     <span>&middot;</span>
-                    <span>{latestTask.clips_count} {latestTask.clips_count === 1 ? "clip" : "clips"}</span>
+                    <span>{latestTask.clips_count} 个片段</span>
                   </div>
                 </div>
               </div>
@@ -747,12 +747,12 @@ export default function Home() {
                 {latestTask.status === "completed" ? (
                   <Badge className="bg-green-100 text-green-800 text-xs">
                     <CheckCircle className="w-3 h-3 mr-1" />
-                    Completed
+                    已完成
                   </Badge>
                 ) : latestTask.status === "processing" ? (
                   <Badge className="bg-blue-100 text-blue-800 text-xs">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Processing
+                    处理中
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-xs">{latestTask.status}</Badge>
@@ -781,10 +781,10 @@ export default function Home() {
           <div className="flex-1 min-w-0">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-stone-900 mb-2">
-                Create New Clip
+                新建剪片任务
               </h2>
               <p className="text-stone-500">
-                Paste a YouTube link or upload a video — AI handles the rest.
+                粘贴 YouTube 链接或上传视频，其余交给 AI。
               </p>
             </div>
 
@@ -808,7 +808,7 @@ export default function Home() {
                     }`}
                   >
                     <Youtube className="w-4 h-4" />
-                    YouTube URL
+                    YouTube 链接
                   </button>
                   <button
                     type="button"
@@ -821,7 +821,7 @@ export default function Home() {
                     }`}
                   >
                     <Upload className="w-4 h-4" />
-                    Upload Video
+                    上传视频
                   </button>
                 </div>
 
@@ -832,7 +832,7 @@ export default function Home() {
                     <Input
                       id="youtube-url"
                       type="url"
-                      placeholder="https://www.youtube.com/watch?v=..."
+                      placeholder="https://www.youtube.com/watch?v=…"
                       value={url}
                       onChange={(e) => setUrl(e.target.value)}
                       disabled={isLoading}
@@ -858,8 +858,8 @@ export default function Home() {
                       <p className="text-sm font-medium text-stone-900">{fileName}</p>
                     ) : (
                       <>
-                        <p className="text-sm font-medium text-stone-700">Drop a video file here or click to browse</p>
-                        <p className="text-xs text-stone-400 mt-1">MP4, MOV, AVI up to 500MB</p>
+                        <p className="text-sm font-medium text-stone-700">拖放视频到此处或点击选择文件</p>
+                        <p className="text-xs text-stone-400 mt-1">支持 MP4、MOV、AVI，最大约 500MB</p>
                       </>
                     )}
                   </div>
@@ -871,23 +871,23 @@ export default function Home() {
                 <CardContent className="px-4 pt-0 pb-2.5 space-y-2.5">
                   <div className="flex items-center gap-2 text-sm font-medium text-stone-900">
                     <Languages className="w-4 h-4" />
-                    AI Settings
+                    AI 设置
                   </div>
 
                   {/* Video Language Selector */}
                   <div className="space-y-2">
                     <label className="text-sm text-stone-600 flex items-center gap-2">
                       <Languages className="w-3.5 h-3.5" />
-                      Video Language
+                      视频语言
                     </label>
                     <Select value={language} onValueChange={setLanguage} disabled={isLoading}>
                       <SelectTrigger className="w-full h-11">
-                        <SelectValue placeholder="Select language" />
+                        <SelectValue placeholder="选择语言" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="auto">Auto-Detect</SelectItem>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="zh">Chinese</SelectItem>
+                        <SelectItem value="auto">自动检测</SelectItem>
+                        <SelectItem value="en">英语</SelectItem>
+                        <SelectItem value="zh">中文</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -896,7 +896,7 @@ export default function Home() {
                   <div className="space-y-2">
                     <label className="text-sm text-stone-600 flex items-center gap-2">
                       <Settings2 className="w-3.5 h-3.5" />
-                      AI Analysis Chunk Size
+                      AI 分析分块大小
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -904,8 +904,7 @@ export default function Home() {
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
                             <p>
-                              For very long videos, the AI analysis is split into chunks. Smaller values use less
-                              memory but may lose some context. Default is 15000.
+                              超长视频会分段分析。数值越小占用内存越少，但可能损失部分上下文。默认 15000。
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -916,7 +915,7 @@ export default function Home() {
                       type="number"
                       value={chunkSize}
                       onChange={(e) => setChunkSize(e.target.value)}
-                      placeholder="e.g., 15000"
+                      placeholder="例如 15000"
                       disabled={isLoading}
                       className="w-full h-11"
                     />
@@ -926,7 +925,7 @@ export default function Home() {
                   <div className="space-y-2">
                     <label className="text-sm text-stone-600 flex items-center gap-2">
                       <Zap className="w-3.5 h-3.5" />
-                      Processing Mode
+                      处理模式
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -934,7 +933,7 @@ export default function Home() {
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
                             <p>
-                              &quot;Fast&quot; generates a few key clips quickly. &quot;Balanced&quot; offers a mix of speed and quantity. &quot;Quality&quot; finds all potential clips but takes longer.
+                              「快速」优先速度，生成少量高相关片段。「均衡」兼顾速度与数量。「质量」尽量找全相关片段，耗时更长。
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -942,12 +941,12 @@ export default function Home() {
                     </label>
                     <Select value={processingMode} onValueChange={setProcessingMode} disabled={isLoading}>
                       <SelectTrigger className="w-full h-11">
-                        <SelectValue placeholder="Select mode" />
+                        <SelectValue placeholder="选择模式" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="fast">Fast</SelectItem>
-                        <SelectItem value="balanced">Balanced</SelectItem>
-                        <SelectItem value="quality">Quality</SelectItem>
+                        <SelectItem value="fast">快速</SelectItem>
+                        <SelectItem value="balanced">均衡</SelectItem>
+                        <SelectItem value="quality">质量</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -959,18 +958,18 @@ export default function Home() {
                 <CardContent className="px-4 pt-0 pb-2.5 space-y-2.5">
                   <div className="flex items-center gap-2 text-sm font-medium text-stone-900">
                     <Sparkles className="w-4 h-4" />
-                    Style & Captions
+                    样式与字幕
                   </div>
 
                   {/* Caption Template Selector */}
                   <div className="space-y-2">
                     <label className="text-sm text-stone-600">
-                      Caption Style
+                      字幕样式
                     </label>
                     <Select value={captionTemplate} onValueChange={handleTemplateChange} disabled={isLoading}>
                       <SelectTrigger className="w-full h-11">
                         <SelectValue>
-                          {availableTemplates.find(t => t.id === captionTemplate)?.name || "Select style"}
+                          {availableTemplates.find(t => t.id === captionTemplate)?.name || "选择样式"}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
@@ -982,7 +981,7 @@ export default function Home() {
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="default">Default</SelectItem>
+                          <SelectItem value="default">默认</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -995,7 +994,7 @@ export default function Home() {
                         <Film className="w-4 h-4 text-purple-500" />
                         <div>
                           <h3 className="text-sm font-medium text-stone-900">AI B-Roll</h3>
-                          <p className="text-xs text-stone-500">Auto-add stock footage from Pexels</p>
+                          <p className="text-xs text-stone-500">自动从 Pexels 匹配素材</p>
                         </div>
                       </div>
                       <Switch
@@ -1011,8 +1010,8 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <Monitor className="w-4 h-4 text-blue-500" />
                       <div>
-                        <h3 className="text-sm font-medium text-stone-900">Wide format</h3>
-                        <p className="text-xs text-stone-500">Keep original aspect ratio instead of 9:16 vertical</p>
+                        <h3 className="text-sm font-medium text-stone-900">宽屏比例</h3>
+                        <p className="text-xs text-stone-500">保留原始画幅，不强制 9:16 竖屏</p>
                       </div>
                     </div>
                     <Switch
@@ -1027,8 +1026,8 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <Type className="w-4 h-4 text-emerald-500" />
                       <div>
-                        <h3 className="text-sm font-medium text-stone-900">Add subtitles</h3>
-                        <p className="text-xs text-stone-500">Burn captions onto clips (disable for faster processing)</p>
+                        <h3 className="text-sm font-medium text-stone-900">烧录字幕</h3>
+                        <p className="text-xs text-stone-500">将字幕烧录进画面（关闭可加快处理）</p>
                       </div>
                     </div>
                     <Switch
@@ -1056,10 +1055,10 @@ export default function Home() {
                   >
                     <div className="flex items-center gap-2 text-sm font-medium text-stone-900">
                       <Paintbrush className="w-4 h-4" />
-                      Font Customization
+                      字体自定义
                     </div>
                     <button type="button" className="text-xs text-stone-500 hover:text-stone-700 transition-colors">
-                      {showAdvancedOptions ? "Hide" : "Show"}
+                      {showAdvancedOptions ? "收起" : "展开"}
                     </button>
                   </div>
 
@@ -1069,10 +1068,10 @@ export default function Home() {
                       <div className="space-y-2">
                         <label className="text-sm text-stone-600 flex items-center gap-2">
                           <Type className="w-3.5 h-3.5" />
-                          Font Family
+                          字体族
                         </label>
                         <div className="flex items-center justify-between gap-3 text-xs text-stone-500">
-                          <span>{availableFonts.length} font{availableFonts.length === 1 ? "" : "s"} available</span>
+                          <span>共 {availableFonts.length} 款字体可用</span>
                           <input
                             ref={fontUploadInputRef}
                             type="file"
@@ -1087,22 +1086,22 @@ export default function Home() {
                             disabled={isLoading || isUploadingFont || !canUploadCustomFonts}
                             onClick={() => fontUploadInputRef.current?.click()}
                           >
-                            {isUploadingFont ? "Uploading..." : "Upload Font"}
+                            {isUploadingFont ? "上传中…" : "上传字体"}
                           </Button>
                         </div>
                         {!canUploadCustomFonts && (
-                          <p className="text-xs text-amber-700">Custom font upload is available on Pro plans.</p>
+                          <p className="text-xs text-amber-700">自定义字体上传仅限 Pro 套餐。</p>
                         )}
                         <Input
                           type="text"
                           value={fontSearch}
                           onChange={(e) => setFontSearch(e.target.value)}
-                          placeholder="Search fonts"
+                          placeholder="搜索字体"
                           disabled={isLoading}
                         />
                         <Select value={fontFamily} onValueChange={setFontFamily} disabled={isLoading}>
                           <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select font" />
+                            <SelectValue placeholder="选择字体" />
                           </SelectTrigger>
                           <SelectContent>
                             {filteredFonts.map((font) => (
@@ -1117,7 +1116,7 @@ export default function Home() {
                             )}
                             {availableFonts.length > 0 && filteredFonts.length === 0 && (
                               <SelectItem value="__no_match__" disabled>
-                                No fonts match your search
+                                没有匹配的字体
                               </SelectItem>
                             )}
                           </SelectContent>
@@ -1132,7 +1131,7 @@ export default function Home() {
                         {/* Font Size Slider */}
                         <div className="space-y-2">
                           <label className="text-sm text-stone-600">
-                            Size: {fontSize}px
+                            字号：{fontSize}px
                           </label>
                           <div className="px-1">
                             <Slider
@@ -1155,7 +1154,7 @@ export default function Home() {
                         <div className="space-y-2">
                           <label className="text-sm text-stone-600 flex items-center gap-1.5">
                             <Palette className="w-3.5 h-3.5" />
-                            Color
+                            颜色
                           </label>
                           <div className="flex items-center gap-2">
                             <input
@@ -1200,7 +1199,7 @@ export default function Home() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-stone-600">Processing</span>
+                      <span className="text-stone-600">处理中</span>
                       <span className="text-stone-900 font-medium">{progress}%</span>
                     </div>
                     <Progress value={progress} className="h-2" />
@@ -1213,7 +1212,7 @@ export default function Home() {
                         <div className="flex-1">
                           <p className="text-sm font-medium text-stone-900">{statusMessage}</p>
                           {sourceTitle && (
-                            <p className="text-xs text-stone-500 mt-1">Processing: {sourceTitle}</p>
+                            <p className="text-xs text-stone-500 mt-1">正在处理：{sourceTitle}</p>
                           )}
                         </div>
                       </div>
@@ -1221,27 +1220,27 @@ export default function Home() {
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div className={`flex items-center gap-2 p-2 rounded-lg ${currentStep === 'validation' || currentStep === 'user_check' ? 'bg-blue-100' : progress > 15 ? 'bg-green-100' : 'bg-stone-100'}`}>
                           <CheckCircle className={`w-3 h-3 ${progress > 15 ? 'text-green-500' : 'text-stone-400'}`} />
-                          <span className={progress > 15 ? 'text-green-700' : 'text-stone-600'}>Validation</span>
+                          <span className={progress > 15 ? 'text-green-700' : 'text-stone-600'}>校验</span>
                         </div>
                         <div className={`flex items-center gap-2 p-2 rounded-lg ${currentStep === 'download' || currentStep === 'youtube_info' ? 'bg-green-100' : progress > 30 ? 'bg-green-100' : 'bg-stone-100'}`}>
                           <CheckCircle className={`w-3 h-3 ${progress > 30 ? 'text-green-500' : 'text-stone-400'}`} />
-                          <span className={progress > 30 ? 'text-green-700' : 'text-stone-600'}>Download</span>
+                          <span className={progress > 30 ? 'text-green-700' : 'text-stone-600'}>下载</span>
                         </div>
                         <div className={`flex items-center gap-2 p-2 rounded-lg ${currentStep === 'transcript' ? 'bg-purple-100' : progress > 45 ? 'bg-green-100' : 'bg-stone-100'}`}>
                           <CheckCircle className={`w-3 h-3 ${progress > 45 ? 'text-green-500' : 'text-stone-400'}`} />
-                          <span className={progress > 45 ? 'text-green-700' : 'text-stone-600'}>Transcript</span>
+                          <span className={progress > 45 ? 'text-green-700' : 'text-stone-600'}>转写</span>
                         </div>
                         <div className={`flex items-center gap-2 p-2 rounded-lg ${currentStep === 'ai_analysis' ? 'bg-orange-100' : progress > 60 ? 'bg-green-100' : 'bg-stone-100'}`}>
                           <CheckCircle className={`w-3 h-3 ${progress > 60 ? 'text-green-500' : 'text-stone-400'}`} />
-                          <span className={progress > 60 ? 'text-green-700' : 'text-stone-600'}>AI Analysis</span>
+                          <span className={progress > 60 ? 'text-green-700' : 'text-stone-600'}>AI 分析</span>
                         </div>
                         <div className={`flex items-center gap-2 p-2 rounded-lg ${currentStep === 'clip_generation' ? 'bg-indigo-100' : progress > 75 ? 'bg-green-100' : 'bg-stone-100'}`}>
                           <CheckCircle className={`w-3 h-3 ${progress > 75 ? 'text-green-500' : 'text-stone-400'}`} />
-                          <span className={progress > 75 ? 'text-green-700' : 'text-stone-600'}>Create Clips</span>
+                          <span className={progress > 75 ? 'text-green-700' : 'text-stone-600'}>生成片段</span>
                         </div>
                         <div className={`flex items-center gap-2 p-2 rounded-lg ${currentStep === 'complete' ? 'bg-green-100' : progress >= 100 ? 'bg-green-100' : 'bg-stone-100'}`}>
                           <CheckCircle className={`w-3 h-3 ${progress >= 100 ? 'text-green-500' : 'text-stone-400'}`} />
-                          <span className={progress >= 100 ? 'text-green-700' : 'text-stone-600'}>Complete</span>
+                          <span className={progress >= 100 ? 'text-green-700' : 'text-stone-600'}>完成</span>
                         </div>
                       </div>
                     </div>
@@ -1259,10 +1258,11 @@ export default function Home() {
               )}
 
               <p className="text-xs text-stone-500">
-                Completion emails use your user preference in{" "}
+                完成通知邮件遵循你在{" "}
                 <Link href="/settings" className="font-medium text-stone-700 underline underline-offset-2">
-                  Settings
-                </Link>.
+                  设置
+                </Link>
+                中的偏好。
               </p>
 
               <Button
@@ -1275,7 +1275,7 @@ export default function Home() {
                   isLoading
                 }
               >
-                {isLoading ? "Processing..." : "Process Video"}
+                {isLoading ? "处理中…" : "开始处理视频"}
               </Button>
             </form>
           </div>
@@ -1298,7 +1298,7 @@ export default function Home() {
             <div className="lg:sticky lg:top-8">
               <div className="flex items-center justify-center gap-2 mb-5 text-sm text-stone-400">
                 <Monitor className="w-4 h-4" />
-                <span>Live Preview</span>
+                <span>实时预览</span>
               </div>
 
               {/* Phone Frame — realistic iPhone style */}
@@ -1355,9 +1355,9 @@ export default function Home() {
 
                     {/* TikTok-style top navigation */}
                     <div className="absolute top-12 left-0 right-0 z-10 flex justify-center items-center gap-5">
-                      <span className="text-white/50 text-xs font-medium">Following</span>
+                      <span className="text-white/50 text-xs font-medium">关注</span>
                       <span className="text-white text-xs font-semibold relative">
-                        For You
+                        推荐
                         <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-white rounded-full" />
                       </span>
                     </div>
@@ -1390,7 +1390,7 @@ export default function Home() {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="white" className="opacity-90">
                           <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92-1.31-2.92-2.92-2.92z"/>
                         </svg>
-                        <span className="text-white text-[10px] font-semibold">Share</span>
+                        <span className="text-white text-[10px] font-semibold">分享</span>
                       </div>
                     </div>
 
@@ -1408,7 +1408,7 @@ export default function Home() {
                           }}
                           className="font-bold"
                         >
-                          Your subtitle will look like this
+                          字幕预览效果
                         </p>
                       </div>
                     </div>
@@ -1417,13 +1417,13 @@ export default function Home() {
                     <div className="absolute left-3 z-10 max-w-[60%]" style={{ bottom: "110px" }}>
                       <p className="text-white text-xs font-bold mb-1">@creator_name</p>
                       <p className="text-white/80 text-[10px] leading-snug">
-                        Check out this amazing clip generated by AI
+                        看看这条由 AI 生成的精彩片段
                       </p>
                       <div className="flex items-center gap-1.5 mt-2">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="white" className="opacity-70">
                           <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                         </svg>
-                        <span className="text-white/70 text-[9px]">Original Sound - creator_name</span>
+                        <span className="text-white/70 text-[9px]">原声 - creator_name</span>
                       </div>
                     </div>
 
@@ -1434,13 +1434,13 @@ export default function Home() {
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                             <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
                           </svg>
-                          <span className="text-white text-[8px]">Home</span>
+                          <span className="text-white text-[8px]">首页</span>
                         </div>
                         <div className="flex flex-col items-center gap-0.5">
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.5">
                             <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/>
                           </svg>
-                          <span className="text-white/50 text-[8px]">Discover</span>
+                          <span className="text-white/50 text-[8px]">发现</span>
                         </div>
                         <div className="relative -mt-3">
                           <div className="w-10 h-7 rounded-lg bg-white flex items-center justify-center">
@@ -1451,11 +1451,11 @@ export default function Home() {
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="white" opacity="0.5">
                             <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
                           </svg>
-                          <span className="text-white/50 text-[8px]">Inbox</span>
+                          <span className="text-white/50 text-[8px]">消息</span>
                         </div>
                         <div className="flex flex-col items-center gap-0.5">
                           <div className="w-5 h-5 rounded-full bg-white/30" />
-                          <span className="text-white/50 text-[8px]">Me</span>
+                          <span className="text-white/50 text-[8px]">我</span>
                         </div>
                       </div>
                       {/* Home indicator */}
@@ -1467,19 +1467,19 @@ export default function Home() {
                 {/* Caption info below phone */}
                 <div className="mt-6 space-y-3 px-2">
                   <div className="flex items-center justify-between text-xs text-stone-500">
-                    <span>Font</span>
+                    <span>字体</span>
                     <span className="text-stone-700 font-medium">
                       {availableFonts.find(f => f.name === fontFamily)?.display_name || fontFamily}
                     </span>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between text-xs text-stone-500">
-                    <span>Size</span>
+                    <span>字号</span>
                     <span className="text-stone-700 font-medium">{fontSize}px</span>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between text-xs text-stone-500">
-                    <span>Color</span>
+                    <span>颜色</span>
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-full border border-stone-300" style={{ backgroundColor: fontColor }} />
                       <span className="text-stone-700 font-medium">{fontColor}</span>
@@ -1487,9 +1487,9 @@ export default function Home() {
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between text-xs text-stone-500">
-                    <span>Template</span>
+                    <span>模板</span>
                     <span className="text-stone-700 font-medium">
-                      {availableTemplates.find(t => t.id === captionTemplate)?.name || "Default"}
+                      {availableTemplates.find(t => t.id === captionTemplate)?.name || "默认"}
                     </span>
                   </div>
                 </div>

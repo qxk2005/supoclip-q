@@ -177,7 +177,7 @@ export default function TaskEditPage() {
     try {
       const taskResponse = await fetch(`${taskApiUrl}/${params.id}`, { cache: "no-store" });
       if (!taskResponse.ok) {
-        throw new Error(await buildSupportError(taskResponse, `Failed to fetch task: ${taskResponse.status}`));
+        throw new Error(await buildSupportError(taskResponse, `获取任务失败：${taskResponse.status}`));
       }
 
       const taskData = (await taskResponse.json()) as TaskDetails;
@@ -190,7 +190,7 @@ export default function TaskEditPage() {
 
       const clipsResponse = await fetch(`${taskApiUrl}/${params.id}/clips`, { cache: "no-store" });
       if (!clipsResponse.ok) {
-        throw new Error(await buildSupportError(clipsResponse, `Failed to fetch clips: ${clipsResponse.status}`));
+        throw new Error(await buildSupportError(clipsResponse, `获取片段失败：${clipsResponse.status}`));
       }
 
       const clipsData = await clipsResponse.json();
@@ -204,7 +204,7 @@ export default function TaskEditPage() {
 
       setMergeSelection((current) => current.filter((id) => nextClips.some((clip) => clip.id === id)));
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Failed to load editor");
+      setError(fetchError instanceof Error ? fetchError.message : "加载编辑器失败");
     }
   }, [buildSupportError, params.id, taskApiUrl]);
 
@@ -264,7 +264,7 @@ export default function TaskEditPage() {
         },
         body: JSON.stringify({ start_offset: startOffset, end_offset: endOffset }),
       });
-      if (!response.ok) throw new Error(await buildSupportError(response, "Failed to trim clip"));
+      if (!response.ok) throw new Error(await buildSupportError(response, "裁剪片段失败"));
     });
   };
 
@@ -279,7 +279,7 @@ export default function TaskEditPage() {
         },
         body: JSON.stringify({ split_time: Number(value.toFixed(2)) }),
       });
-      if (!response.ok) throw new Error(await buildSupportError(response, "Failed to split clip"));
+      if (!response.ok) throw new Error(await buildSupportError(response, "分割片段失败"));
     });
   };
 
@@ -298,7 +298,7 @@ export default function TaskEditPage() {
           highlight_words: highlightWords,
         }),
       });
-      if (!response.ok) throw new Error(await buildSupportError(response, "Failed to update captions"));
+      if (!response.ok) throw new Error(await buildSupportError(response, "更新字幕失败"));
     });
   };
 
@@ -312,7 +312,7 @@ export default function TaskEditPage() {
         },
         body: JSON.stringify({ clip_ids: mergeSelection }),
       });
-      if (!response.ok) throw new Error(await buildSupportError(response, "Failed to merge selected clips"));
+      if (!response.ok) throw new Error(await buildSupportError(response, "合并所选片段失败"));
     });
     setMergeSelection([]);
   };
@@ -325,7 +325,7 @@ export default function TaskEditPage() {
     try {
       const sourceResponse = await fetch(`${apiUrl}${selectedClip.video_url}`);
       if (!sourceResponse.ok) {
-        throw new Error(`Failed to fetch source clip: ${sourceResponse.status}`);
+        throw new Error(`获取源片段失败：${sourceResponse.status}`);
       }
 
       const sourceBlob = await sourceResponse.blob();
@@ -583,16 +583,16 @@ export default function TaskEditPage() {
               <Link href={`/tasks/${params.id}`}>
                 <Button variant="ghost" size="sm">
                   <ArrowLeft className="w-4 h-4" />
-                  Back to Task
+                  返回任务
                 </Button>
               </Link>
-              <Badge variant="outline">Studio Editor</Badge>
+              <Badge variant="outline">剪辑工作室</Badge>
             </div>
-            <h1 className="text-2xl font-bold text-black">{task?.source_title || "Clip Editor"}</h1>
+            <h1 className="text-2xl font-bold text-black">{task?.source_title || "片段编辑器"}</h1>
           </div>
           <Button onClick={handleExport} disabled={!selectedClip || isSaving}>
             <Download className="w-4 h-4" />
-            {exportProgress !== null ? `Exporting ${exportProgress}%` : "Export Selected"}
+            {exportProgress !== null ? `导出中 ${exportProgress}%` : "导出当前片段"}
           </Button>
         </div>
       </div>
@@ -606,24 +606,24 @@ export default function TaskEditPage() {
 
         {!task ? (
           <Alert>
-            <AlertDescription>Task not found.</AlertDescription>
+            <AlertDescription>未找到任务。</AlertDescription>
           </Alert>
         ) : task.status !== "completed" ? (
           <Card>
             <CardContent className="p-8 text-center space-y-3">
-              <p className="text-lg font-semibold">This editor is available once processing completes.</p>
-              <p className="text-gray-600">Current status: {task.status}</p>
+              <p className="text-lg font-semibold">处理完成后即可使用本编辑器。</p>
+              <p className="text-gray-600">当前状态：{task.status}</p>
               <Link href={`/tasks/${task.id}`}>
-                <Button variant="outline">Return to Task</Button>
+                <Button variant="outline">返回任务</Button>
               </Link>
             </CardContent>
           </Card>
         ) : clips.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center space-y-3">
-              <p className="text-lg font-semibold">No clips to edit yet.</p>
+              <p className="text-lg font-semibold">暂无可编辑的片段。</p>
               <Link href={`/tasks/${task.id}`}>
-                <Button variant="outline">Return to Task</Button>
+                <Button variant="outline">返回任务</Button>
               </Link>
             </CardContent>
           </Card>
@@ -665,15 +665,15 @@ export default function TaskEditPage() {
                               );
                             })
                           ) : (
-                            <span>Subtitle preview</span>
+                            <span>字幕预览</span>
                           )}
                         </div>
                       </div>
 
                       <div className="border rounded-lg p-3 space-y-3">
                         <div className="flex items-center justify-between text-sm text-gray-600">
-                          <span>Playhead: {formatDuration(currentTime)} / {formatDuration(selectedClip.duration)}</span>
-                          <span>{isPlaying ? "Playing" : "Paused"}</span>
+                          <span>播放头：{formatDuration(currentTime)} / {formatDuration(selectedClip.duration)}</span>
+                          <span>{isPlaying ? "播放中" : "已暂停"}</span>
                         </div>
 
                         <Slider
@@ -687,14 +687,14 @@ export default function TaskEditPage() {
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                           <Button variant="outline" size="sm" onClick={() => seekTo(Math.max(0, currentTime - 1))}>-1s</Button>
                           <Button variant="outline" size="sm" onClick={() => seekTo(Math.min(selectedClip.duration, currentTime + 1))}>+1s</Button>
-                          <Button variant="outline" size="sm" onClick={setTrimInToPlayhead}>Set In</Button>
-                          <Button variant="outline" size="sm" onClick={setTrimOutToPlayhead}>Set Out</Button>
+                          <Button variant="outline" size="sm" onClick={setTrimInToPlayhead}>设为入点</Button>
+                          <Button variant="outline" size="sm" onClick={setTrimOutToPlayhead}>设为出点</Button>
                         </div>
                       </div>
 
                       <div className="border rounded-lg p-3 space-y-3">
                         <div className="flex items-center justify-between text-sm text-gray-700">
-                          <span className="font-medium">Trim Range</span>
+                          <span className="font-medium">裁剪范围</span>
                           <span>{formatDuration(trimRange[0])} - {formatDuration(trimRange[1])}</span>
                         </div>
                         <Slider
@@ -707,15 +707,15 @@ export default function TaskEditPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <Button onClick={handleTrim} disabled={isSaving}>
                             <Scissors className="w-4 h-4" />
-                            Apply Trim
+                            应用裁剪
                           </Button>
-                          <Button variant="outline" onClick={() => seekTo(trimRange[0])}>Jump In</Button>
-                          <Button variant="outline" onClick={() => seekTo(trimRange[1])}>Jump Out</Button>
+                          <Button variant="outline" onClick={() => seekTo(trimRange[0])}>跳到入点</Button>
+                          <Button variant="outline" onClick={() => seekTo(trimRange[1])}>跳到出点</Button>
                         </div>
                       </div>
                     </>
                   ) : (
-                    <p className="text-sm text-gray-600">Select a clip to start editing.</p>
+                    <p className="text-sm text-gray-600">请选择一个片段开始编辑。</p>
                   )}
                 </CardContent>
               </Card>
@@ -725,13 +725,13 @@ export default function TaskEditPage() {
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Layers className="w-4 h-4" />
-                      Fine Controls
+                      精细调节
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-5">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2"><SplitSquareVertical className="w-4 h-4" />Split</span>
+                        <span className="flex items-center gap-2"><SplitSquareVertical className="w-4 h-4" />分割</span>
                         <span>{splitTime.toFixed(2)}s</span>
                       </div>
                       <Slider
@@ -742,42 +742,42 @@ export default function TaskEditPage() {
                         onValueChange={(value) => setSplitTime(value[0] || MIN_GAP_SECONDS)}
                       />
                       <div className="grid grid-cols-2 gap-2">
-                        <Button variant="outline" onClick={() => setSplitTime(currentTime)} disabled={!selectedClip}>Set to Playhead</Button>
-                        <Button variant="outline" onClick={() => void handleSplit()} disabled={isSaving || !selectedClip}>Split Clip</Button>
+                        <Button variant="outline" onClick={() => setSplitTime(currentTime)} disabled={!selectedClip}>对齐播放头</Button>
+                        <Button variant="outline" onClick={() => void handleSplit()} disabled={isSaving || !selectedClip}>分割片段</Button>
                       </div>
                     </div>
 
                     <div className="space-y-3">
-                      <div className="text-sm font-medium flex items-center gap-2"><AudioLines className="w-4 h-4" />Audio</div>
+                      <div className="text-sm font-medium flex items-center gap-2"><AudioLines className="w-4 h-4" />音频</div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs text-gray-600">
-                          <span>Volume</span>
+                          <span>音量</span>
                           <span>{volume}%</span>
                         </div>
                         <Slider min={0} max={200} step={1} value={[volume]} onValueChange={(v) => setVolume(v[0] || 0)} />
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-xs text-gray-600">
-                          <span>Playback Rate</span>
+                          <span>播放速度</span>
                           <span>{playbackRate.toFixed(2)}x</span>
                         </div>
                         <Slider min={0.5} max={2} step={0.05} value={[playbackRate]} onValueChange={(v) => setPlaybackRate(v[0] || 1)} />
                       </div>
                       <Button variant="outline" className="w-full" onClick={() => setIsMuted((m) => !m)}>
                         {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                        {isMuted ? "Unmute" : "Mute"}
+                        {isMuted ? "取消静音" : "静音"}
                       </Button>
                     </div>
 
                     <div className="space-y-3">
-                      <div className="text-sm font-medium flex items-center gap-2"><Palette className="w-4 h-4" />Video FX</div>
+                      <div className="text-sm font-medium flex items-center gap-2"><Palette className="w-4 h-4" />画面效果</div>
                       {[
-                        ["Brightness", "brightness", 40, 180, 1],
-                        ["Contrast", "contrast", 40, 180, 1],
-                        ["Saturation", "saturation", 0, 220, 1],
-                        ["Blur", "blur", 0, 8, 0.1],
-                        ["Hue", "hue", -180, 180, 1],
-                        ["Zoom", "zoom", 1, 2, 0.01],
+                        ["亮度", "brightness", 40, 180, 1],
+                        ["对比度", "contrast", 40, 180, 1],
+                        ["饱和度", "saturation", 0, 220, 1],
+                        ["模糊", "blur", 0, 8, 0.1],
+                        ["色相", "hue", -180, 180, 1],
+                        ["缩放", "zoom", 1, 2, 0.01],
                       ].map(([label, key, min, max, step]) => {
                         const typedKey = key as keyof VideoFx;
                         const currentValue = videoFx[typedKey];
@@ -801,7 +801,7 @@ export default function TaskEditPage() {
 
                     <Button variant="outline" className="w-full" onClick={resetPreviewAdjustments}>
                       <Gauge className="w-4 h-4" />
-                      Reset Preview Adjustments
+                      重置预览调节
                     </Button>
                   </CardContent>
                 </Card>
@@ -810,32 +810,32 @@ export default function TaskEditPage() {
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Subtitles className="w-4 h-4" />
-                      Subtitle Control
+                      字幕
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <textarea
                       value={captionText}
                       onChange={(e) => setCaptionText(e.target.value)}
-                      placeholder="Edit subtitle script"
+                      placeholder="编辑字幕稿"
                       className="w-full min-h-24 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                     />
 
                     <div className="grid grid-cols-2 gap-2">
                       <Select value={captionPosition} onValueChange={setCaptionPosition}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Position" />
+                          <SelectValue placeholder="位置" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="top">Top</SelectItem>
-                          <SelectItem value="middle">Middle</SelectItem>
-                          <SelectItem value="bottom">Bottom</SelectItem>
+                          <SelectItem value="top">顶部</SelectItem>
+                          <SelectItem value="middle">中部</SelectItem>
+                          <SelectItem value="bottom">底部</SelectItem>
                         </SelectContent>
                       </Select>
 
                       <Select value={exportPreset} onValueChange={setExportPreset}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Preset" />
+                          <SelectValue placeholder="导出预设" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="tiktok">TikTok</SelectItem>
@@ -847,7 +847,7 @@ export default function TaskEditPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span>Subtitle Size</span>
+                        <span>字幕大小</span>
                         <span>{subtitleSize}</span>
                       </div>
                       <Slider min={28} max={88} step={1} value={[subtitleSize]} onValueChange={(v) => setSubtitleSize(v[0] || 52)} />
@@ -855,17 +855,17 @@ export default function TaskEditPage() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-gray-600">
-                        <span>Vertical Offset</span>
+                        <span>垂直位置</span>
                         <span>{subtitleY}%</span>
                       </div>
                       <Slider min={10} max={85} step={1} value={[subtitleY]} onValueChange={(v) => setSubtitleY(v[0] || 78)} />
                     </div>
 
                     <div className="space-y-2">
-                      <div className="text-xs text-gray-600">Highlight words (click to toggle)</div>
+                      <div className="text-xs text-gray-600">高亮词（点击切换）</div>
                       <div className="max-h-28 overflow-y-auto rounded-md border border-gray-200 p-2 flex flex-wrap gap-1.5">
                         {subtitleWords.length === 0 ? (
-                          <span className="text-xs text-gray-500">No words yet.</span>
+                          <span className="text-xs text-gray-500">暂无词语。</span>
                         ) : (
                           subtitleWords.map((word, index) => {
                             const cleaned = word.toLowerCase().replace(/[^a-z0-9']/g, "");
@@ -888,7 +888,7 @@ export default function TaskEditPage() {
                     </div>
 
                     <Button onClick={handleUpdateCaptions} disabled={isSaving || !selectedClip} className="w-full">
-                      Save Subtitle Changes
+                      保存字幕修改
                     </Button>
                   </CardContent>
                 </Card>
@@ -899,14 +899,14 @@ export default function TaskEditPage() {
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Clapperboard className="w-4 h-4" />
-                  Clips
+                  片段列表
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {mergeSelection.length >= 2 && (
                   <div className="flex justify-end">
                     <Button variant="outline" onClick={handleMerge} disabled={isSaving}>
-                      Merge Selected ({mergeSelection.length})
+                      合并所选（{mergeSelection.length}）
                     </Button>
                   </div>
                 )}
@@ -925,13 +925,13 @@ export default function TaskEditPage() {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-medium text-sm text-black">Clip {clip.clip_order}</p>
+                            <p className="font-medium text-sm text-black">片段 {clip.clip_order}</p>
                             <p className="text-xs text-gray-500">{clip.start_time} - {clip.end_time}</p>
                             <p className="text-xs text-gray-500">{formatDuration(clip.duration)}</p>
                           </div>
                           <label className="flex items-center gap-1 text-xs text-gray-600" onClick={(e) => e.stopPropagation()}>
                             <input type="checkbox" checked={isSelectedForMerge} onChange={() => toggleMergeSelection(clip.id)} />
-                            Merge
+                            合并
                           </label>
                         </div>
                       </button>

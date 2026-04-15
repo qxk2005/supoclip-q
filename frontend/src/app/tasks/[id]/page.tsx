@@ -179,7 +179,7 @@ export default function TaskPage() {
         }
 
         if (!taskResponse.ok) {
-          throw new Error(await buildSupportError(taskResponse, `Failed to fetch task: ${taskResponse.status}`));
+          throw new Error(await buildSupportError(taskResponse, `获取任务失败：${taskResponse.status}`));
         }
 
         const taskData = await taskResponse.json();
@@ -200,7 +200,7 @@ export default function TaskPage() {
           });
 
           if (!clipsResponse.ok) {
-            throw new Error(await buildSupportError(clipsResponse, `Failed to fetch clips: ${clipsResponse.status}`));
+            throw new Error(await buildSupportError(clipsResponse, `获取片段失败：${clipsResponse.status}`));
           }
 
           const clipsData = await clipsResponse.json();
@@ -226,7 +226,7 @@ export default function TaskPage() {
         return true;
       } catch (err) {
         console.error("Error fetching task data:", err);
-        setError(err instanceof Error ? err.message : "Failed to load task");
+        setError(err instanceof Error ? err.message : "加载任务失败");
         return false;
       }
     },
@@ -347,7 +347,7 @@ export default function TaskPage() {
       const maybeMessageEvent = e as MessageEvent<string>;
       if (typeof maybeMessageEvent.data === "string" && maybeMessageEvent.data.length > 0) {
         const data = JSON.parse(maybeMessageEvent.data);
-        setError(data.error || "Connection error");
+        setError(data.error || "连接异常");
       }
       eventSource.close();
     });
@@ -386,14 +386,14 @@ export default function TaskPage() {
 
   const getHookTypeLabel = (hookType: string | null) => {
     const labels: Record<string, string> = {
-      question: "Question Hook",
-      statement: "Bold Statement",
-      statistic: "Data/Stats",
-      story: "Story Hook",
-      contrast: "Contrast Hook",
-      none: "No Hook",
+      question: "提问式钩子",
+      statement: "观点式钩子",
+      statistic: "数据/统计",
+      story: "故事式钩子",
+      contrast: "对比式钩子",
+      none: "无特定钩子",
     };
-    return labels[hookType || "none"] || hookType || "None";
+    return labels[hookType || "none"] || hookType || "无";
   };
 
   const handleEditTitle = async () => {
@@ -412,11 +412,11 @@ export default function TaskPage() {
         setTask(task ? { ...task, source_title: editedTitle } : null);
         setIsEditing(false);
       } else {
-        alert(await buildSupportError(response, "Failed to update title"));
+        alert(await buildSupportError(response, "更新标题失败"));
       }
     } catch (err) {
       console.error("Error updating title:", err);
-      alert(err instanceof Error ? err.message : "Failed to update title");
+      alert(err instanceof Error ? err.message : "更新标题失败");
     }
   };
 
@@ -432,11 +432,11 @@ export default function TaskPage() {
       if (response.ok) {
         router.push("/list");
       } else {
-        alert(await buildSupportError(response, "Failed to delete task"));
+        alert(await buildSupportError(response, "删除任务失败"));
       }
     } catch (err) {
       console.error("Error deleting task:", err);
-      alert(err instanceof Error ? err.message : "Failed to delete task");
+      alert(err instanceof Error ? err.message : "删除任务失败");
     } finally {
       setIsDeleting(false);
       setShowDeleteDialog(false);
@@ -455,11 +455,11 @@ export default function TaskPage() {
         setClips(clips.filter((clip) => clip.id !== clipId));
         setDeletingClipId(null);
       } else {
-        alert(await buildSupportError(response, "Failed to delete clip"));
+        alert(await buildSupportError(response, "删除片段失败"));
       }
     } catch (err) {
       console.error("Error deleting clip:", err);
-      alert(err instanceof Error ? err.message : "Failed to delete clip");
+      alert(err instanceof Error ? err.message : "删除片段失败");
     }
   };
 
@@ -485,7 +485,7 @@ export default function TaskPage() {
       }),
     });
     if (!response.ok) {
-      alert(await buildSupportError(response, "Failed to trim clip"));
+      alert(await buildSupportError(response, "裁剪片段失败"));
       return;
     }
     await fetchTaskStatus();
@@ -501,7 +501,7 @@ export default function TaskPage() {
       body: JSON.stringify({ split_time: Number(splitTime || "5") }),
     });
     if (!response.ok) {
-      alert(await buildSupportError(response, "Failed to split clip"));
+      alert(await buildSupportError(response, "分割片段失败"));
       return;
     }
     await fetchTaskStatus();
@@ -517,7 +517,7 @@ export default function TaskPage() {
       body: JSON.stringify({ clip_ids: selectedClipIds }),
     });
     if (!response.ok) {
-      alert(await buildSupportError(response, "Failed to merge clips"));
+      alert(await buildSupportError(response, "合并片段失败"));
       return;
     }
     setSelectedClipIds([]);
@@ -541,7 +541,7 @@ export default function TaskPage() {
       }),
     });
     if (!response.ok) {
-      alert(await buildSupportError(response, "Failed to update captions"));
+      alert(await buildSupportError(response, "更新字幕失败"));
       return;
     }
     await fetchTaskStatus();
@@ -573,7 +573,7 @@ export default function TaskPage() {
         }),
       });
       if (!response.ok) {
-        alert(await buildSupportError(response, "Failed to apply settings"));
+        alert(await buildSupportError(response, "应用设置失败"));
         return;
       }
       await fetchTaskStatus();
@@ -590,7 +590,7 @@ export default function TaskPage() {
     });
 
     if (!response.ok) {
-      alert(await buildSupportError(response, "Failed to export clip"));
+      alert(await buildSupportError(response, "导出片段失败"));
       return;
     }
 
@@ -639,7 +639,7 @@ export default function TaskPage() {
           <Link href="/" className="mt-4 inline-block">
             <Button variant="outline">
               <ArrowLeft className="w-4 h-4" />
-              Back to Home
+              返回首页
             </Button>
           </Link>
         </div>
@@ -656,7 +656,7 @@ export default function TaskPage() {
             <Link href="/">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="w-4 h-4" />
-                Back
+                返回
               </Button>
             </Link>
           </div>
@@ -721,11 +721,11 @@ export default function TaskPage() {
                     <TooltipTrigger asChild>
                       <span className="flex items-center gap-1 cursor-default">
                         <Clock className="w-4 h-4" />
-                        {new Date(task.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                        {new Date(task.created_at).toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" })}
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      {new Date(task.created_at).toLocaleString(undefined, {
+                      {new Date(task.created_at).toLocaleString("zh-CN", {
                         year: "numeric",
                         month: "long",
                         day: "numeric",
@@ -739,17 +739,17 @@ export default function TaskPage() {
                 </TooltipProvider>
                 {task.status === "completed" ? (
                   <span>
-                    {clips.length} {clips.length === 1 ? "clip" : "clips"} generated
+                    已生成 {clips.length} 个片段
                   </span>
                 ) : task.status === "processing" ? (
                   <div className="relative group">
-                    <Badge className="bg-blue-100 text-blue-800 cursor-default shimmer">Processing</Badge>
+                    <Badge className="bg-blue-100 text-blue-800 cursor-default shimmer">处理中</Badge>
                     <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md opacity-0 scale-95 transition-all group-hover:opacity-100 group-hover:scale-100 pointer-events-none">
-                      🔍&nbsp;&nbsp;We&apos;re currently processing your video. Check back in a couple minutes.
+                      🔍&nbsp;&nbsp;正在处理视频，请几分钟后再来看。
                     </div>
                   </div>
                 ) : task.status === "queued" ? (
-                  <Badge className="bg-yellow-100 text-yellow-800">Queued</Badge>
+                  <Badge className="bg-yellow-100 text-yellow-800">排队中</Badge>
                 ) : (
                   <Badge variant="outline" className="capitalize">
                     {task.status}
@@ -759,7 +759,7 @@ export default function TaskPage() {
                   <Link href={`/tasks/${task.id}/edit`}>
                     <Button size="sm" variant="outline">
                       <Clapperboard className="w-4 h-4" />
-                      Open Editor
+                      打开编辑器
                     </Button>
                   </Link>
                 )}
@@ -774,7 +774,7 @@ export default function TaskPage() {
                       await fetchTaskStatus();
                     }}
                   >
-                    Cancel
+                    取消
                   </Button>
                 )}
                 {(task.status === "cancelled" || task.status === "error") && (
@@ -788,7 +788,7 @@ export default function TaskPage() {
                       await fetchTaskStatus();
                     }}
                   >
-                    Resume
+                    恢复
                   </Button>
                 )}
               </div>
@@ -809,13 +809,13 @@ export default function TaskPage() {
                 <span className="w-2 h-2 bg-neutral-800 rounded-full animate-[pulse_1.4s_ease-in-out_0.2s_infinite]" />
                 <span className="w-2 h-2 bg-neutral-800 rounded-full animate-[pulse_1.4s_ease-in-out_0.4s_infinite]" />
                 <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md opacity-0 scale-95 transition-all group-hover:opacity-100 group-hover:scale-100 pointer-events-none">
-                  ☕&nbsp;&nbsp;Grab a coffee, and come back to ready-to-post clips.
+                  ☕&nbsp;&nbsp;喝杯咖啡，回来即可下载成片。
                 </div>
               </div>
 
               {/* Status message */}
               <p className="shimmer text-neutral-600/60 text-sm tracking-wide mb-8">
-                {progressMessage || (task.status === "queued" ? "Waiting in queue" : "Processing")}
+                {progressMessage || (task.status === "queued" ? "排队等待中" : "处理中")}
               </p>
 
               {/* Minimal progress bar */}
@@ -836,7 +836,7 @@ export default function TaskPage() {
             {clips.length > 0 && (
               <div className="grid gap-6">
                 <p className="text-sm text-neutral-500 text-center">
-                  {clips.length} clip{clips.length !== 1 ? "s" : ""} ready
+                  已有 {clips.length} 个片段就绪
                 </p>
                 {clips.map((clip) => (
                   <Card key={clip.id} className="overflow-hidden">
@@ -848,7 +848,7 @@ export default function TaskPage() {
                         <div className="p-6 flex-1">
                           <div className="flex items-start justify-between mb-4">
                             <div>
-                              <h3 className="font-semibold text-lg text-black mb-1">Clip {clip.clip_order}</h3>
+                              <h3 className="font-semibold text-lg text-black mb-1">片段 {clip.clip_order}</h3>
                               <div className="flex items-center gap-2 text-sm text-gray-600">
                                 <span>{clip.start_time} - {clip.end_time}</span>
                                 <span>•</span>
@@ -870,20 +870,20 @@ export default function TaskPage() {
                           </div>
                           {clip.text && (
                             <div className="mb-4">
-                              <h4 className="font-medium text-black mb-2">Transcript</h4>
+                              <h4 className="font-medium text-black mb-2">转写文本</h4>
                               <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">{clip.text}</p>
                             </div>
                           )}
                           {clip.reasoning && (
                             <div className="mb-4">
-                              <h4 className="font-medium text-black mb-2">AI Analysis</h4>
+                              <h4 className="font-medium text-black mb-2">AI 分析</h4>
                               <p className="text-sm text-gray-600">{clip.reasoning}</p>
                             </div>
                           )}
                           <Button size="sm" variant="outline" asChild>
                             <a href={`${apiUrl}${clip.video_url}`} download={clip.filename}>
                               <Download className="w-4 h-4" />
-                              Download
+                              下载
                             </a>
                           </Button>
                         </div>
@@ -907,15 +907,15 @@ export default function TaskPage() {
             <CardContent className="p-8 text-center">
               <div className="text-red-600 mb-4">
                 <AlertCircle className="w-12 h-12 mx-auto mb-2" />
-                <h2 className="text-xl font-semibold">Processing Failed</h2>
+                <h2 className="text-xl font-semibold">处理失败</h2>
               </div>
               <p className="text-gray-600 mb-4 whitespace-pre-wrap">
-                {task.progress_message || error || "There was an error processing your video. Please try again."}
+                {task.progress_message || error || "处理视频时出错，请重试。"}
               </p>
               <Link href="/">
                 <Button>
                   <ArrowLeft className="w-4 h-4" />
-                  Back to Home
+                  返回首页
                 </Button>
               </Link>
             </CardContent>
@@ -927,16 +927,15 @@ export default function TaskPage() {
                 <>
                   <div className="text-yellow-600 mb-4">
                     <AlertCircle className="w-12 h-12 mx-auto mb-2" />
-                    <h2 className="text-xl font-semibold">No Clips Generated</h2>
+                    <h2 className="text-xl font-semibold">未生成片段</h2>
                   </div>
                   <p className="text-gray-600 mb-4">
-                    The task completed but no clips were generated. The video may not have had suitable content for
-                    clipping.
+                    任务已完成，但没有生成片段。可能是视频内容不适合剪片。
                   </p>
                   <Link href="/">
                     <Button>
                       <ArrowLeft className="w-4 h-4" />
-                      Try Another Video
+                      换一条视频试试
                     </Button>
                   </Link>
                 </>
@@ -945,9 +944,9 @@ export default function TaskPage() {
                   <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Clock className="w-8 h-8 text-blue-500 animate-pulse" />
                   </div>
-                  <h2 className="text-xl font-semibold text-black mb-2">Still Generating...</h2>
+                  <h2 className="text-xl font-semibold text-black mb-2">仍在生成中…</h2>
                   <p className="text-gray-600">
-                    Your clips are being generated. This page will refresh automatically when they&apos;re ready.
+                    片段生成完成后，本页面会自动刷新。
                   </p>
                 </>
               )}
@@ -958,12 +957,12 @@ export default function TaskPage() {
             <div className="flex items-center justify-between">
               <Button variant="outline" size="sm" onClick={() => setSettingsSheetOpen(true)}>
                 <Settings2 className="w-4 h-4" />
-                Project Settings
+                项目设置
               </Button>
               {selectedClipIds.length >= 2 && (
                 <Button variant="outline" size="sm" onClick={handleMergeClips}>
                   <GitMerge className="w-4 h-4" />
-                  Merge Selected ({selectedClipIds.length})
+                  合并所选（{selectedClipIds.length}）
                 </Button>
               )}
             </div>
@@ -973,19 +972,19 @@ export default function TaskPage() {
                 <SheetHeader>
                   <SheetTitle className="flex items-center gap-2">
                     <Settings2 className="w-4 h-4" />
-                    Project Settings
+                    项目设置
                   </SheetTitle>
                   <SheetDescription>
-                    Configure font, caption, and B-roll settings for this task&apos;s clips.
+                    为本任务的所有片段配置字体、字幕与 B-Roll。
                   </SheetDescription>
                 </SheetHeader>
 
                 <div className="space-y-5 px-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">Font</label>
+                    <label className="text-xs font-medium text-gray-500">字体</label>
                     <Select value={projectFontFamily} onValueChange={setProjectFontFamily}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Font family" />
+                        <SelectValue placeholder="字体族" />
                       </SelectTrigger>
                       <SelectContent>
                         {availableFonts.map((font) => (
@@ -1004,19 +1003,19 @@ export default function TaskPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">Size</label>
+                    <label className="text-xs font-medium text-gray-500">字号</label>
                     <Input
                       type="number"
                       min={12}
                       max={72}
                       value={projectFontSize}
                       onChange={(e) => setProjectFontSize(e.target.value)}
-                      placeholder="Font size"
+                      placeholder="字号"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">Color</label>
+                    <label className="text-xs font-medium text-gray-500">颜色</label>
                     <div className="flex items-center gap-2">
                       <input
                         type="color"
@@ -1033,18 +1032,18 @@ export default function TaskPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">Subtitle Style</label>
+                    <label className="text-xs font-medium text-gray-500">字幕样式</label>
                     <Select value={projectCaptionTemplate} onValueChange={setProjectCaptionTemplate}>
                       <SelectTrigger>
                         <SelectValue>
-                          {projectCaptionTemplate === 'bilingual' ? 'Bilingual (Chinese/English)' : availableTemplates.find((t) => t.id === projectCaptionTemplate)?.name || "Select style"}
+                          {projectCaptionTemplate === 'bilingual' ? '中英双语' : availableTemplates.find((t) => t.id === projectCaptionTemplate)?.name || "选择样式"}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="bilingual">
                           <div>
-                            <div className="font-medium">Bilingual (Chinese/English)</div>
-                            <div className="text-xs text-gray-500">Display Chinese and English subtitles simultaneously.</div>
+                            <div className="font-medium">中英双语</div>
+                            <div className="text-xs text-gray-500">同时显示中文与英文字幕。</div>
                           </div>
                         </SelectItem>
                         {availableTemplates.map((template) => (
@@ -1055,7 +1054,7 @@ export default function TaskPage() {
                             </div>
                           </SelectItem>
                         ))}
-                        {availableTemplates.length === 0 && <SelectItem value="default">Default</SelectItem>}
+                        {availableTemplates.length === 0 && <SelectItem value="default">默认</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1067,35 +1066,35 @@ export default function TaskPage() {
                       onChange={(e) => setProjectIncludeBroll(e.target.checked)}
                       className="rounded"
                     />
-                    Include B-roll
+                    包含 B-Roll
                   </label>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">Processing Mode</label>
+                    <label className="text-xs font-medium text-gray-500">处理模式</label>
                     <Select
                       value={projectProcessingMode}
                       onValueChange={(value) => setProjectProcessingMode(value as 'fast' | 'balanced' | 'quality')}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select processing mode" />
+                        <SelectValue placeholder="选择处理模式" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="fast">
                           <div>
-                            <div className="font-medium">Fast</div>
-                            <div className="text-xs text-gray-500">Prioritize speed, generates fewer, highly relevant clips (up to 4).</div>
+                            <div className="font-medium">快速</div>
+                            <div className="text-xs text-gray-500">优先速度，生成少量高相关片段（最多约 4 条）。</div>
                           </div>
                         </SelectItem>
                         <SelectItem value="balanced">
                           <div>
-                            <div className="font-medium">Balanced</div>
-                            <div className="text-xs text-gray-500">Good balance of speed and quality, generates a moderate number of clips.</div>
+                            <div className="font-medium">均衡</div>
+                            <div className="text-xs text-gray-500">速度与数量兼顾，生成中等数量片段。</div>
                           </div>
                         </SelectItem>
                         <SelectItem value="quality">
                           <div>
-                            <div className="font-medium">Quality</div>
-                            <div className="text-xs text-gray-500">Prioritize clip quality and quantity, generates all relevant clips.</div>
+                            <div className="font-medium">质量</div>
+                            <div className="text-xs text-gray-500">优先质量与覆盖面，生成全部相关片段，耗时更长。</div>
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -1109,7 +1108,7 @@ export default function TaskPage() {
                       onChange={(e) => setProjectAudioFadeIn(e.target.checked)}
                       className="rounded"
                     />
-                    Enable audio fade in
+                    启用音频淡入
                   </label>
 
                   <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -1119,7 +1118,7 @@ export default function TaskPage() {
                       onChange={(e) => setProjectAudioFadeOut(e.target.checked)}
                       className="rounded"
                     />
-                    Enable audio fade out
+                    启用音频淡出
                   </label>
                 </div>
 
@@ -1132,7 +1131,7 @@ export default function TaskPage() {
                     }}
                     disabled={isApplyingSettings}
                   >
-                    {isApplyingSettings ? "Applying..." : "Apply to All Clips"}
+                    {isApplyingSettings ? "应用中…" : "应用到全部片段"}
                   </Button>
                 </SheetFooter>
               </SheetContent>
@@ -1157,9 +1156,9 @@ export default function TaskPage() {
                               checked={selectedClipIds.includes(clip.id)}
                               onChange={() => handleToggleClipSelection(clip.id)}
                             />
-                            Select for merge
+                            加入合并
                           </label>
-                          <h3 className="font-semibold text-lg text-black mb-1">Clip {clip.clip_order}</h3>
+                          <h3 className="font-semibold text-lg text-black mb-1">片段 {clip.clip_order}</h3>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <span>
                               {clip.start_time} - {clip.end_time}
@@ -1189,7 +1188,7 @@ export default function TaskPage() {
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="font-medium text-black text-sm flex items-center gap-2">
                               <Zap className="w-4 h-4" />
-                              Virality Score
+                              传播力得分
                             </h4>
                             <span className={`text-lg font-bold ${getViralityColor(clip.virality_score)}`}>
                               {clip.virality_score}/100
@@ -1202,7 +1201,7 @@ export default function TaskPage() {
                               <div className="flex items-center justify-between">
                                 <span className="flex items-center gap-1 text-gray-600">
                                   <MessageSquare className="w-3 h-3" />
-                                  Hook
+                                  钩子
                                 </span>
                                 <span className="font-medium">{clip.hook_score}/25</span>
                               </div>
@@ -1214,7 +1213,7 @@ export default function TaskPage() {
                               <div className="flex items-center justify-between">
                                 <span className="flex items-center gap-1 text-gray-600">
                                   <TrendingUp className="w-3 h-3" />
-                                  Engagement
+                                  互动
                                 </span>
                                 <span className="font-medium">{clip.engagement_score}/25</span>
                               </div>
@@ -1226,7 +1225,7 @@ export default function TaskPage() {
                               <div className="flex items-center justify-between">
                                 <span className="flex items-center gap-1 text-gray-600">
                                   <Star className="w-3 h-3" />
-                                  Value
+                                  价值
                                 </span>
                                 <span className="font-medium">{clip.value_score}/25</span>
                               </div>
@@ -1238,7 +1237,7 @@ export default function TaskPage() {
                               <div className="flex items-center justify-between">
                                 <span className="flex items-center gap-1 text-gray-600">
                                   <Share2 className="w-3 h-3" />
-                                  Shareability
+                                  分享性
                                 </span>
                                 <span className="font-medium">{clip.shareability_score}/25</span>
                               </div>
@@ -1258,14 +1257,14 @@ export default function TaskPage() {
 
                       {clip.text && (
                         <div className="mb-4">
-                          <h4 className="font-medium text-black mb-2">Transcript</h4>
+                          <h4 className="font-medium text-black mb-2">转写文本</h4>
                           <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">{clip.text}</p>
                         </div>
                       )}
 
                       {clip.reasoning && (
                         <div className="mb-4">
-                          <h4 className="font-medium text-black mb-2">AI Analysis</h4>
+                          <h4 className="font-medium text-black mb-2">AI 分析</h4>
                           <p className="text-sm text-gray-600">{clip.reasoning}</p>
                         </div>
                       )}
@@ -1274,16 +1273,16 @@ export default function TaskPage() {
                         <Button size="sm" variant="outline" asChild>
                           <a href={`${apiUrl}${clip.video_url}`} download={clip.filename}>
                             <Download className="w-4 h-4" />
-                            Download
+                            下载
                           </a>
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => handleExportClip(clip.id, clip.filename)}>
                           <Download className="w-4 h-4" />
-                          Export
+                          导出
                         </Button>
                         <Select value={exportPreset} onValueChange={setExportPreset}>
                           <SelectTrigger className="h-8 w-28">
-                            <SelectValue placeholder="Preset" />
+                            <SelectValue placeholder="预设" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="tiktok">TikTok</SelectItem>
@@ -1298,7 +1297,7 @@ export default function TaskPage() {
                           onClick={() => setDeletingClipId(clip.id)}
                         >
                           <Trash2 className="w-4 h-4" />
-                          Delete
+                          删除
                         </Button>
                         <Button
                           size="sm"
@@ -1309,7 +1308,7 @@ export default function TaskPage() {
                           }}
                         >
                           <Scissors className="w-4 h-4" />
-                          Edit
+                          编辑
                         </Button>
                       </div>
 
@@ -1319,58 +1318,58 @@ export default function TaskPage() {
                             <Input
                               value={startOffset}
                               onChange={(e) => setStartOffset(e.target.value)}
-                              placeholder="Start trim (sec)"
+                              placeholder="起点裁剪（秒）"
                             />
                             <Input
                               value={endOffset}
                               onChange={(e) => setEndOffset(e.target.value)}
-                              placeholder="End trim (sec)"
+                              placeholder="终点裁剪（秒）"
                             />
                             <Button size="sm" onClick={() => handleTrimClip(clip.id)}>
                               <Scissors className="w-4 h-4" />
-                              Trim
+                              裁剪
                             </Button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                             <Input
                               value={splitTime}
                               onChange={(e) => setSplitTime(e.target.value)}
-                              placeholder="Split at (sec)"
+                              placeholder="在此秒数分割"
                             />
                             <Button size="sm" variant="outline" onClick={() => handleSplitClip(clip.id)}>
                               <SplitSquareVertical className="w-4 h-4" />
-                              Split
+                              分割
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => handleTrimClip(clip.id)}>
                               <RefreshCw className="w-4 h-4" />
-                              Regenerate
+                              重新生成
                             </Button>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                             <Input
                               value={captionText}
                               onChange={(e) => setCaptionText(e.target.value)}
-                              placeholder="Caption text"
+                              placeholder="字幕文案"
                             />
                             <Select value={captionPosition} onValueChange={setCaptionPosition}>
                               <SelectTrigger>
-                                <SelectValue placeholder="Caption position" />
+                                <SelectValue placeholder="字幕位置" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="top">Top</SelectItem>
-                                <SelectItem value="middle">Middle</SelectItem>
-                                <SelectItem value="bottom">Bottom</SelectItem>
+                                <SelectItem value="top">顶部</SelectItem>
+                                <SelectItem value="middle">中部</SelectItem>
+                                <SelectItem value="bottom">底部</SelectItem>
                               </SelectContent>
                             </Select>
                             <Input
                               value={highlightWords}
                               onChange={(e) => setHighlightWords(e.target.value)}
-                              placeholder="Highlights: word1, word2"
+                              placeholder="高亮词：词1, 词2"
                             />
                           </div>
                           <Button size="sm" variant="outline" onClick={() => handleUpdateCaptions(clip.id)}>
                             <Subtitles className="w-4 h-4" />
-                            Update Captions
+                            更新字幕
                           </Button>
                         </div>
                       )}
@@ -1387,16 +1386,15 @@ export default function TaskPage() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Generation</AlertDialogTitle>
+            <AlertDialogTitle>删除生成任务</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this generation? This will permanently delete all clips and cannot be
-              undone.
+              确定要删除该生成任务吗？将永久删除所有片段且无法恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>取消</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteTask} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? "删除中…" : "删除"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1406,18 +1404,18 @@ export default function TaskPage() {
       <AlertDialog open={!!deletingClipId} onOpenChange={(open) => !open && setDeletingClipId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Clip</AlertDialogTitle>
+            <AlertDialogTitle>删除片段</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this clip? This action cannot be undone.
+              确定要删除该片段吗？此操作无法撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deletingClipId && handleDeleteClip(deletingClipId)}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

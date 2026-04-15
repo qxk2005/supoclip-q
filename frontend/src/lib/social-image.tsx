@@ -187,7 +187,7 @@ export async function createSocialImageResponse() {
               lineHeight: 1,
             }}
           >
-            Turn long videos into viral-ready shorts
+            将长视频剪成适合传播的爆款短片
           </div>
 
           <div
@@ -197,7 +197,7 @@ export async function createSocialImageResponse() {
               marginTop: 8,
             }}
           >
-            {["AI-Powered", "Auto Subtitles", "9:16 Vertical", "Open Source"].map(
+            {["AI 驱动", "自动字幕", "9:16 竖屏", "开源"].map(
               (label) => (
                 <div
                   key={label}

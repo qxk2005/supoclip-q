@@ -79,39 +79,39 @@ function ScrollReveal({
 const FEATURES = [
   {
     icon: ScanFace,
-    title: "Face-Centered Cropping",
+    title: "人脸居中裁切",
     description:
-      "MediaPipe + OpenCV detects and tracks faces for perfect 9:16 vertical framing.",
+      "MediaPipe 与 OpenCV 检测并跟踪人脸，实现理想的 9:16 竖屏构图。",
   },
   {
     icon: Type,
-    title: "Word-Synced Subtitles",
+    title: "逐字同步字幕",
     description:
-      "Word-level timestamps power perfectly timed, animated captions on every clip.",
+      "词级时间轴驱动每条片段上精准、带动画的字幕。",
   },
   {
     icon: Target,
-    title: "Virality Scoring",
+    title: "传播力评分",
     description:
-      "AI rates hook, engagement, value, and shareability — scored 0 to 100.",
+      "AI 评估钩子、互动、价值与分享潜力，综合得分 0–100。",
   },
   {
     icon: Film,
-    title: "B-Roll Overlays",
+    title: "B-Roll 叠加",
     description:
-      "Automatically source and overlay relevant stock footage from Pexels.",
+      "自动从 Pexels 匹配并叠加相关素材画面。",
   },
   {
     icon: Sparkles,
-    title: "Caption Templates",
+    title: "字幕模板",
     description:
-      "Multiple animation styles and font presets to match your brand.",
+      "多种动效与字体预设，贴合你的品牌风格。",
   },
   {
     icon: MonitorPlay,
-    title: "Platform Export",
+    title: "平台导出",
     description:
-      "One-click presets for TikTok, Reels, and Shorts with optimized encoding.",
+      "一键预设适配 TikTok、Reels、Shorts，编码已优化。",
   },
 ];
 
@@ -121,22 +121,22 @@ function getPlans() {
   const proLimit = parseInt(process.env.NEXT_PUBLIC_PRO_PLAN_TASK_LIMIT || "0", 10);
 
   const proGenerationsLabel =
-    proLimit === 0 ? "Unlimited generations" : `${proLimit} generations per month`;
+    proLimit === 0 ? "每月无限次生成" : `每月 ${proLimit} 次生成`;
 
   return [
     {
-      name: "Self-Hosted",
+      name: "自托管",
       price: "$0",
-      period: "forever",
-      description: "Run on your own infrastructure with full control.",
+      period: "永久",
+      description: "在你自己的基础设施上运行，完全自主可控。",
       features: [
-        "Face-centered cropping",
-        "Word-synced subtitles",
-        "Virality scoring",
-        "All export presets",
-        "Full source code access",
+        "人脸居中裁切",
+        "逐字同步字幕",
+        "传播力评分",
+        "全部导出预设",
+        "完整源代码",
       ],
-      cta: "View on GitHub",
+      cta: "在 GitHub 查看",
       ctaHref: "https://github.com/FujiwaraChoki/supoclip",
       highlighted: false,
       isUnlimited: false,
@@ -144,18 +144,18 @@ function getPlans() {
     {
       name: "Pro",
       price: `$${proPriceMonthly}`,
-      period: "/month",
-      description: "For power users who clip daily and need more generations.",
+      period: "/月",
+      description: "适合每日剪片、需要更高生成额度的重度用户。",
       features: [
         proGenerationsLabel,
-        "Everything in Free",
-        "B-Roll overlays",
-        "Caption templates",
-        "Platform export presets",
-        "Priority processing",
-        "Early access to new features",
+        "包含免费版全部功能",
+        "B-Roll 叠加",
+        "字幕模板",
+        "平台导出预设",
+        "优先处理队列",
+        "新功能抢先体验",
       ],
-      cta: "Upgrade to Pro",
+      cta: "升级到 Pro",
       ctaHref: "",
       highlighted: true,
       isUnlimited: proLimit === 0,
@@ -166,23 +166,23 @@ function getPlans() {
 const STEPS = [
   {
     num: "01",
-    title: "Drop a link or file",
+    title: "粘贴链接或上传文件",
     description:
-      "Paste any YouTube URL or drag-and-drop your own video file.",
+      "粘贴任意 YouTube 链接，或拖放本地视频文件。",
     icon: Youtube,
   },
   {
     num: "02",
-    title: "AI finds the gold",
+    title: "AI 挑出高光",
     description:
-      "Transcription, virality scoring, and segment detection surface the best moments.",
+      "转写、传播力评分与片段检测，找出最值得剪的时刻。",
     icon: Wand2,
   },
   {
     num: "03",
-    title: "Export & publish",
+    title: "导出并发布",
     description:
-      "Get vertical, captioned, face-tracked clips ready for every platform.",
+      "获得竖屏、带字幕、人脸跟踪的成片，各平台直接可用。",
     icon: Share2,
   },
 ];
@@ -233,25 +233,25 @@ export default function LandingPage() {
               href="#how-it-works"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              How It Works
+              如何使用
             </a>
             <a
               href="#features"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Features
+              功能
             </a>
             <a
               href="#pricing"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Pricing
+              定价
             </a>
             <a
               href="#open-source"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Open Source
+              开源
             </a>
           </div>
 
@@ -261,17 +261,17 @@ export default function LandingPage() {
               <>
                 <Link href="/sign-in">
                   <Button variant="ghost" size="sm">
-                    Sign In
+                    登录
                   </Button>
                 </Link>
                 <Link href="/sign-up">
-                  <Button size="sm">Get Started</Button>
+                  <Button size="sm">开始使用</Button>
                 </Link>
               </>
             ) : (
               <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
                 <Button size="sm">
-                  Open Hosted App
+                  打开托管版
                   <ExternalLink className="w-3.5 h-3.5" />
                 </Button>
               </a>
@@ -284,7 +284,7 @@ export default function LandingPage() {
             size="sm"
             onClick={() => setMobileNavOpen(!mobileNavOpen)}
             className="md:hidden p-2"
-            aria-label="Toggle menu"
+            aria-label="切换菜单"
           >
             {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </Button>
@@ -299,28 +299,28 @@ export default function LandingPage() {
                 onClick={() => setMobileNavOpen(false)}
                 className="block rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               >
-                How It Works
+                如何使用
               </a>
               <a
                 href="#features"
                 onClick={() => setMobileNavOpen(false)}
                 className="block rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               >
-                Features
+                功能
               </a>
               <a
                 href="#pricing"
                 onClick={() => setMobileNavOpen(false)}
                 className="block rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               >
-                Pricing
+                定价
               </a>
               <a
                 href="#open-source"
                 onClick={() => setMobileNavOpen(false)}
                 className="block rounded-lg px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
               >
-                Open Source
+                开源
               </a>
               <Separator className="my-2" />
               <div className="flex flex-col gap-2 px-3 pt-1">
@@ -328,17 +328,17 @@ export default function LandingPage() {
                   <>
                     <Link href="/sign-in" onClick={() => setMobileNavOpen(false)}>
                       <Button variant="outline" size="sm" className="w-full">
-                        Sign In
+                        登录
                       </Button>
                     </Link>
                     <Link href="/sign-up" onClick={() => setMobileNavOpen(false)}>
-                      <Button size="sm" className="w-full">Get Started</Button>
+                      <Button size="sm" className="w-full">开始使用</Button>
                     </Link>
                   </>
                 ) : (
                   <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
                     <Button size="sm" className="w-full">
-                      Open Hosted App
+                      打开托管版
                       <ExternalLink className="w-3.5 h-3.5" />
                     </Button>
                   </a>
@@ -371,7 +371,7 @@ export default function LandingPage() {
                 style={{ animation: "landing-fade-in-up 0.6s ease-out both" }}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                Open Source & Self-Hostable
+                开源且可自托管
               </Badge>
 
               <h1
@@ -382,9 +382,9 @@ export default function LandingPage() {
                   animation: "landing-fade-in-up 0.6s ease-out 0.1s both",
                 }}
               >
-                From long video
+                长视频
                 <br />
-                to viral clips
+                剪成爆款短片
               </h1>
 
               <p
@@ -393,9 +393,7 @@ export default function LandingPage() {
                   animation: "landing-fade-in-up 0.6s ease-out 0.2s both",
                 }}
               >
-                AI-powered clipping that transcribes, scores virality, crops for
-                vertical, adds word-synced captions, and exports platform-ready
-                shorts.
+                AI 驱动的剪片：自动转写、传播力评分、竖屏裁切、逐字同步字幕，并导出各平台就绪的短片。
               </p>
 
               <div
@@ -407,14 +405,14 @@ export default function LandingPage() {
                 {authEnabled ? (
                   <Link href="/sign-up">
                     <Button size="lg" className="px-8 h-12 text-sm">
-                      Start Clipping
+                      开始剪片
                       <ArrowRight className="w-4 h-4" />
                     </Button>
                   </Link>
                 ) : (
                   <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
                     <Button size="lg" className="px-8 h-12 text-sm">
-                      Use Hosted App
+                      使用托管版
                       <ExternalLink className="w-4 h-4" />
                     </Button>
                   </a>
@@ -426,7 +424,7 @@ export default function LandingPage() {
                 >
                   <Button variant="outline" size="lg" className="px-8 h-12 text-sm">
                     <Github className="w-4 h-4" />
-                    View Source
+                    查看源码
                   </Button>
                 </a>
               </div>
@@ -438,9 +436,9 @@ export default function LandingPage() {
                 }}
               >
                 {[
-                  { icon: ScanFace, label: "9:16 Auto-Crop" },
-                  { icon: Type, label: "Word-Synced Captions" },
-                  { icon: Target, label: "Virality Scoring" },
+                  { icon: ScanFace, label: "9:16 自动裁切" },
+                  { icon: Type, label: "逐字同步字幕" },
+                  { icon: Target, label: "传播力评分" },
                 ].map(({ icon: Icon, label }) => (
                   <div key={label} className="flex items-center gap-1.5">
                     <Icon className="w-3.5 h-3.5" />
@@ -472,7 +470,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6">
           <ScrollReveal className="text-center mb-14">
             <p className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-3">
-              How It Works
+              如何使用
             </p>
             <h2
               className="text-3xl sm:text-4xl font-bold tracking-tight"
@@ -481,7 +479,7 @@ export default function LandingPage() {
                   "var(--font-syne), var(--font-geist-sans), system-ui",
               }}
             >
-              Three steps. Zero effort.
+              三步完成，省心省力
             </h2>
           </ScrollReveal>
 
@@ -523,7 +521,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6">
           <ScrollReveal className="text-center mb-14">
             <p className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-3">
-              Features
+              功能
             </p>
             <h2
               className="text-3xl sm:text-4xl font-bold tracking-tight mb-4"
@@ -532,11 +530,10 @@ export default function LandingPage() {
                   "var(--font-syne), var(--font-geist-sans), system-ui",
               }}
             >
-              Everything you need to go viral
+              做爆款所需的全部能力
             </h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Professional-grade video clipping with AI intelligence at every
-              step of the pipeline.
+              专业级剪片流程，每一步都有 AI 加持。
             </p>
           </ScrollReveal>
 
@@ -577,7 +574,7 @@ export default function LandingPage() {
         <div className="relative max-w-5xl mx-auto px-6">
           <ScrollReveal className="text-center mb-16">
             <p className="text-xs font-semibold tracking-[0.2em] uppercase text-muted-foreground mb-3">
-              Pricing
+              定价
             </p>
             <h2
               className="text-3xl sm:text-4xl font-bold tracking-tight mb-4"
@@ -586,11 +583,10 @@ export default function LandingPage() {
                   "var(--font-syne), var(--font-geist-sans), system-ui",
               }}
             >
-              Simple pricing, no surprises
+              简单透明，没有套路
             </h2>
             <p className="text-sm text-muted-foreground max-w-md mx-auto">
-              Start free. Upgrade when you need unlimited power.
-              Self-hosters get everything free, always.
+              免费起步，需要更强能力时再升级。自托管用户永久免费使用全部功能。
             </p>
           </ScrollReveal>
 
@@ -608,7 +604,7 @@ export default function LandingPage() {
                     <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                       <Badge className="bg-foreground text-background border-0 shadow-md gap-1.5 px-3 py-1">
                         <Zap className="w-3 h-3" />
-                        Most Popular
+                        最受欢迎
                       </Badge>
                     </div>
                   )}
@@ -667,7 +663,7 @@ export default function LandingPage() {
                                 : ""
                             }
                           >
-                            {plan.isUnlimited && feature.includes("Unlimited") ? (
+                            {plan.isUnlimited && feature.includes("无限") ? (
                               <span className="flex items-center gap-1.5 font-medium">
                                 <Infinity className="w-3.5 h-3.5" />
                                 {feature}
@@ -726,7 +722,7 @@ export default function LandingPage() {
                           variant={plan.highlighted ? "secondary" : "default"}
                           size="lg"
                         >
-                          Use Hosted App
+                          使用托管版
                           <ExternalLink className="w-4 h-4" />
                         </Button>
                       </a>
@@ -739,14 +735,14 @@ export default function LandingPage() {
 
           <ScrollReveal delay={0.3}>
             <p className="text-center text-xs text-muted-foreground mt-10 max-w-md mx-auto">
-              Self-hosting? All features are free and unlimited.{" "}
+              自托管？全部功能免费且无限制。{" "}
               <a
                 href="#open-source"
                 className="underline underline-offset-2 hover:text-foreground transition-colors"
               >
-                See setup instructions
+                查看部署说明
               </a>
-              .
+              。
             </p>
           </ScrollReveal>
         </div>
@@ -760,17 +756,16 @@ export default function LandingPage() {
           <ScrollReveal className="text-center mb-10">
             <Badge variant="outline" className="mb-6 gap-1.5">
               <Github className="w-3.5 h-3.5" />
-              AGPL-3.0 Licensed
+              AGPL-3.0 开源许可
             </Badge>
             <h2
               className="text-3xl sm:text-4xl font-bold tracking-tight mb-4"
               style={{ fontFamily: "var(--font-syne), system-ui" }}
             >
-              Built in the open
+              公开开发，社区共建
             </h2>
             <p className="text-sm text-muted-foreground max-w-lg mx-auto">
-              Fully open source. Self-host on your infrastructure, contribute
-              features, or fork it and make it yours.
+              完全开源。可在自有环境自托管、贡献功能，或 Fork 后定制属于你的版本。
             </p>
           </ScrollReveal>
 
@@ -778,7 +773,7 @@ export default function LandingPage() {
             <Card className="py-0 gap-0">
               <CardContent className="p-6 md:p-8">
                 <p className="text-xs font-medium text-muted-foreground mb-3">
-                  Get running in 30 seconds:
+                  约 30 秒本地跑起来：
                 </p>
                 <div className="bg-primary text-primary-foreground rounded-lg p-5 font-mono text-sm leading-loose overflow-x-auto">
                   <div>
@@ -807,21 +802,21 @@ export default function LandingPage() {
                   >
                     <Button>
                       <Github className="w-4 h-4" />
-                      View on GitHub
+                      在 GitHub 查看
                       <ExternalLink className="w-3.5 h-3.5 opacity-50" />
                     </Button>
                   </a>
                   {authEnabled ? (
                     <Link href="/sign-up">
                       <Button variant="outline">
-                        Try the hosted version
+                        试用托管版
                         <ArrowRight className="w-4 h-4" />
                       </Button>
                     </Link>
                   ) : (
                     <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
                       <Button variant="outline">
-                        Open hosted version
+                        打开托管版
                         <ExternalLink className="w-4 h-4" />
                       </Button>
                     </a>
@@ -842,23 +837,22 @@ export default function LandingPage() {
             className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6"
             style={{ fontFamily: "var(--font-syne), system-ui" }}
           >
-            Ready to clip?
+            准备好剪第一条了吗？
           </h2>
           <p className="text-base text-muted-foreground mb-8">
-            Turn your next video into scroll-stopping shorts. Free, open source,
-            no credit card required.
+            把下一条长视频做成让人停不下来的短片。免费、开源，无需信用卡。
           </p>
           {authEnabled ? (
             <Link href="/sign-up">
               <Button size="lg" className="px-10 h-12 text-sm">
-                Get Started Free
+                免费开始使用
                 <ArrowRight className="w-4 h-4" />
               </Button>
             </Link>
           ) : (
             <a href={HOSTED_APP_URL} target="_blank" rel="noopener noreferrer">
               <Button size="lg" className="px-10 h-12 text-sm">
-                Open Hosted App
+                打开托管版
                 <ExternalLink className="w-4 h-4" />
               </Button>
             </a>
@@ -991,17 +985,17 @@ function HeroVisual() {
               {
                 bg: "linear-gradient(135deg, #e8e5e0, #d6d3cd)",
                 score: 92,
-                label: "Hook moment",
+                label: "开场钩子",
               },
               {
                 bg: "linear-gradient(135deg, #dfe0e4, #cdd0d6)",
                 score: 87,
-                label: "Key insight",
+                label: "核心观点",
               },
               {
                 bg: "linear-gradient(135deg, #e4e2df, #d3d0cb)",
                 score: 78,
-                label: "CTA close",
+                label: "结尾号召",
               },
             ].map((clip, i) => (
               <div

@@ -31,9 +31,9 @@ describe("SignIn", () => {
 
     render(<SignIn />);
 
-    await user.type(screen.getByPlaceholderText("Email"), "user@example.com");
-    await user.type(screen.getByPlaceholderText("Password"), "Password123!");
-    await user.click(screen.getByRole("button", { name: "Sign In" }));
+    await user.type(screen.getByPlaceholderText("邮箱"), "user@example.com");
+    await user.type(screen.getByPlaceholderText("密码"), "Password123!");
+    await user.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByText("Invalid credentials")).toBeInTheDocument();
   });
@@ -44,10 +44,10 @@ describe("SignIn", () => {
 
     render(<SignIn />);
 
-    await user.type(screen.getByPlaceholderText("Email"), "user@example.com");
-    await user.type(screen.getByPlaceholderText("Password"), "Password123!");
-    await user.click(screen.getByRole("button", { name: "Sign In" }));
+    await user.type(screen.getByPlaceholderText("邮箱"), "user@example.com");
+    await user.type(screen.getByPlaceholderText("密码"), "Password123!");
+    await user.click(screen.getByRole("button", { name: "登录" }));
 
-    expect(await screen.findByText("Signed in successfully!")).toBeInTheDocument();
+    expect(await screen.findByText("登录成功！")).toBeInTheDocument();
   });
 });

@@ -26,7 +26,7 @@ export function SignIn() {
     });
 
     if (response.error) {
-      setMessage(response.error.message || "Failed to sign in");
+      setMessage(response.error.message || "登录失败");
       setLoading(false);
       return;
     }
@@ -34,7 +34,7 @@ export function SignIn() {
     track("signin_completed", {
       auth_method: "email",
     });
-    setMessage("Signed in successfully!");
+    setMessage("登录成功！");
     setLoading(false);
 
     // Redirect after successful sign in
@@ -47,14 +47,14 @@ export function SignIn() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Sign In</CardTitle>
-        <CardDescription>Sign in to your account</CardDescription>
+        <CardTitle>登录</CardTitle>
+        <CardDescription>登录你的账户</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             type="email"
-            placeholder="Email"
+            placeholder="邮箱"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -62,18 +62,18 @@ export function SignIn() {
           />
           <Input
             type="password"
-            placeholder="Password"
+            placeholder="密码"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             disabled={loading}
           />
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing In..." : "Sign In"}
+            {loading ? "登录中…" : "登录"}
           </Button>
         </form>
         {message && (
-          <p className={`mt-4 text-sm ${message.includes("successfully") ? "text-green-600" : "text-red-600"}`}>
+          <p className={`mt-4 text-sm ${/成功|successfully/.test(message) ? "text-green-600" : "text-red-600"}`}>
             {message}
           </p>
         )}

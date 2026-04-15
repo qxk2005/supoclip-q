@@ -22,10 +22,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 const categories = [
-  { value: "bug", label: "Bug Report" },
-  { value: "feature", label: "Feature Request" },
-  { value: "general", label: "General Feedback" },
-  { value: "sales", label: "Sales Inquiry" },
+  { value: "bug", label: "问题反馈" },
+  { value: "feature", label: "功能建议" },
+  { value: "general", label: "一般反馈" },
+  { value: "sales", label: "商务咨询" },
 ];
 
 export function FeedbackButton() {
@@ -50,10 +50,10 @@ export function FeedbackButton() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.detail || "Failed to submit feedback");
+        throw new Error(data?.detail || "提交反馈失败");
       }
 
-      toast.success("Feedback submitted — thank you!");
+      toast.success("反馈已提交，感谢！");
       track("feedback_submitted", {
         category,
       });
@@ -61,7 +61,7 @@ export function FeedbackButton() {
       setMessage("");
       setOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toast.error(err instanceof Error ? err.message : "出错了，请重试");
     } finally {
       setSubmitting(false);
     }
@@ -84,11 +84,11 @@ export function FeedbackButton() {
         sideOffset={12}
       >
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm">Send Feedback</h3>
+          <h3 className="font-semibold text-sm">发送反馈</h3>
 
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Category" />
+              <SelectValue placeholder="类别" />
             </SelectTrigger>
             <SelectContent>
               {categories.map((c) => (
@@ -100,7 +100,7 @@ export function FeedbackButton() {
           </Select>
 
           <Textarea
-            placeholder="Tell us what's on your mind..."
+            placeholder="说说你的想法…"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={4}
@@ -115,7 +115,7 @@ export function FeedbackButton() {
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              "Submit"
+              "提交"
             )}
           </Button>
         </div>

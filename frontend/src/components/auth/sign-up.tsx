@@ -26,7 +26,7 @@ export function SignUp() {
     });
 
     if (response.error) {
-      setMessage(response.error.message || "Failed to create account");
+      setMessage(response.error.message || "注册失败");
       setLoading(false);
       return;
     }
@@ -34,7 +34,7 @@ export function SignUp() {
     track("signup_completed", {
       auth_method: "email",
     });
-    setMessage("Account created successfully! Signing you in...");
+    setMessage("注册成功！正在为你登录…");
     setLoading(false);
 
     // Automatically sign in after successful sign up
@@ -46,14 +46,14 @@ export function SignUp() {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
-        <CardTitle>Sign Up</CardTitle>
-        <CardDescription>Create a new account to get started</CardDescription>
+        <CardTitle>注册</CardTitle>
+        <CardDescription>创建账户以开始使用</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             type="text"
-            placeholder="Full Name"
+            placeholder="姓名"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -61,7 +61,7 @@ export function SignUp() {
           />
           <Input
             type="email"
-            placeholder="Email"
+            placeholder="邮箱"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -69,7 +69,7 @@ export function SignUp() {
           />
           <Input
             type="password"
-            placeholder="Password"
+            placeholder="密码"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -77,11 +77,11 @@ export function SignUp() {
             minLength={8}
           />
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating Account..." : "Sign Up"}
+            {loading ? "创建账户中…" : "注册"}
           </Button>
         </form>
         {message && (
-          <p className={`mt-4 text-sm ${message.includes("successfully") ? "text-green-600" : "text-red-600"}`}>
+          <p className={`mt-4 text-sm ${/成功|successfully/.test(message) ? "text-green-600" : "text-red-600"}`}>
             {message}
           </p>
         )}

@@ -40,21 +40,21 @@ const isDataFastEnabled = Boolean(dataFastWebsiteId && dataFastDomain);
 
 export const metadata: Metadata = {
   title: "SupoClip",
-  description: "Turn long videos into viral-ready shorts.",
+  description: "将长视频一键剪成适合传播的竖屏短片。",
   metadataBase: getMetadataBase(),
   icons: {
     icon: "/icon.png",
   },
   openGraph: {
     title: "SupoClip",
-    description: "Turn long videos into viral-ready shorts.",
+    description: "将长视频一键剪成适合传播的竖屏短片。",
     siteName: "SupoClip",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "SupoClip",
-    description: "Turn long videos into viral-ready shorts.",
+    description: "将长视频一键剪成适合传播的竖屏短片。",
   },
 };
 
@@ -64,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <head>
         {isDataFastEnabled ? (
           <>

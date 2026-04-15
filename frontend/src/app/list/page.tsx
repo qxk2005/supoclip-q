@@ -63,7 +63,7 @@ async function fetchTasksList() {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch tasks: ${response.status}`);
+    throw new Error(`获取任务列表失败：${response.status}`);
   }
 
   const data = await response.json();
@@ -80,31 +80,31 @@ const STATUS_CONFIG: Record<
   { label: string; dotClass: string; bgClass: string; textClass: string }
 > = {
   completed: {
-    label: "Completed",
+    label: "已完成",
     dotClass: "bg-emerald-500",
     bgClass: "bg-emerald-50 border-emerald-200/60",
     textClass: "text-emerald-800",
   },
   processing: {
-    label: "Processing",
+    label: "处理中",
     dotClass: "bg-blue-500 animate-pulse",
     bgClass: "bg-blue-50 border-blue-200/60",
     textClass: "text-blue-800",
   },
   queued: {
-    label: "Queued",
+    label: "排队中",
     dotClass: "bg-amber-500",
     bgClass: "bg-amber-50 border-amber-200/60",
     textClass: "text-amber-800",
   },
   error: {
-    label: "Error",
+    label: "失败",
     dotClass: "bg-red-500",
     bgClass: "bg-red-50 border-red-200/60",
     textClass: "text-red-800",
   },
   cancelled: {
-    label: "Cancelled",
+    label: "已取消",
     dotClass: "bg-stone-400",
     bgClass: "bg-stone-100 border-stone-200/60",
     textClass: "text-stone-600",
@@ -143,7 +143,7 @@ export default function ListPage() {
         );
       } catch (err) {
         console.error("Error fetching tasks:", err);
-        setError(err instanceof Error ? err.message : "Failed to load tasks");
+        setError(err instanceof Error ? err.message : "加载任务失败");
       } finally {
         setIsLoading(false);
       }
@@ -176,7 +176,7 @@ export default function ListPage() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return new Intl.DateTimeFormat("en-US", {
+    return new Intl.DateTimeFormat("zh-CN", {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -266,7 +266,7 @@ export default function ListPage() {
         message:
           refreshError instanceof Error
             ? refreshError.message
-            : "The batch action finished, but the list could not be refreshed.",
+            : "批量操作已完成，但列表刷新失败。",
       });
     } finally {
       setActiveBatchAction(null);
@@ -283,10 +283,10 @@ export default function ListPage() {
       targetTaskIds,
       (taskId) => fetch(`/api/tasks/${taskId}/cancel`, { method: "POST" }),
       {
-        empty: "No active generations in selection to cancel.",
-        fallback: "Failed to cancel generation",
-        success: (count) => `${count} generation${count === 1 ? "" : "s"} cancelled.`,
-        partial: (s, f, err) => `${s} cancelled, ${f} failed. ${err}`,
+        empty: "所选任务中没有可取消的进行中的生成。",
+        fallback: "取消生成失败",
+        success: (count) => `已取消 ${count} 个生成任务。`,
+        partial: (s, f, err) => `已取消 ${s} 个，${f} 个失败。${err}`,
       },
     );
   };
@@ -301,10 +301,10 @@ export default function ListPage() {
       targetTaskIds,
       (taskId) => fetch(`/api/tasks/${taskId}/resume`, { method: "POST" }),
       {
-        empty: "No failed or cancelled generations in selection to resume.",
-        fallback: "Failed to resume generation",
-        success: (count) => `${count} generation${count === 1 ? "" : "s"} resumed.`,
-        partial: (s, f, err) => `${s} resumed, ${f} failed. ${err}`,
+        empty: "所选任务中没有可恢复的失败或已取消生成。",
+        fallback: "恢复生成失败",
+        success: (count) => `已恢复 ${count} 个生成任务。`,
+        partial: (s, f, err) => `已恢复 ${s} 个，${f} 个失败。${err}`,
       },
     );
   };
@@ -317,10 +317,10 @@ export default function ListPage() {
       targetTaskIds,
       (taskId) => fetch(`/api/tasks/${taskId}`, { method: "DELETE" }),
       {
-        empty: "Select at least one generation to delete.",
-        fallback: "Failed to delete generation",
-        success: (count) => `${count} generation${count === 1 ? "" : "s"} deleted.`,
-        partial: (s, f, err) => `${s} deleted, ${f} failed. ${err}`,
+        empty: "请至少选择一个生成任务以删除。",
+        fallback: "删除生成失败",
+        success: (count) => `已删除 ${count} 个生成任务。`,
+        partial: (s, f, err) => `已删除 ${s} 个，${f} 个失败。${err}`,
       },
     );
 
@@ -345,12 +345,12 @@ export default function ListPage() {
     return (
       <div className="min-h-screen bg-white">
         <div className="max-w-4xl mx-auto px-4 py-24 text-center">
-          <h1 className="text-3xl font-bold text-black mb-4">Sign In Required</h1>
+          <h1 className="text-3xl font-bold text-black mb-4">需要登录</h1>
           <p className="text-gray-600 mb-8">
-            You need to be signed in to view your generations.
+            请先登录以查看你的生成记录。
           </p>
           <Link href="/sign-in">
-            <Button size="lg">Sign In</Button>
+            <Button size="lg">登录</Button>
           </Link>
         </div>
       </div>
@@ -393,7 +393,7 @@ export default function ListPage() {
             <Link href="/">
               <Button variant="ghost" size="sm" className="text-stone-500 hover:text-stone-900">
                 <ArrowLeft className="w-4 h-4" />
-                Back
+                返回
               </Button>
             </Link>
           </div>
@@ -401,10 +401,10 @@ export default function ListPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="font-[var(--font-syne)] text-2xl font-bold tracking-tight text-stone-950">
-                Generations
+                生成记录
               </h1>
               <p className="mt-1 text-sm text-stone-500">
-                {tasks.length} total &middot; manage and review your clips
+                共 {tasks.length} 条 · 管理与预览你的片段
               </p>
             </div>
 
@@ -413,19 +413,19 @@ export default function ListPage() {
                 {completedCount > 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 text-xs font-medium text-emerald-800">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    {completedCount} done
+                    {completedCount} 已完成
                   </span>
                 )}
                 {activeCount > 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200/60 px-2.5 py-1 text-xs font-medium text-blue-800">
                     <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-                    {activeCount} active
+                    {activeCount} 进行中
                   </span>
                 )}
                 {attentionCount > 0 && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 border border-red-200/60 px-2.5 py-1 text-xs font-medium text-red-700">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    {attentionCount} need attention
+                    {attentionCount} 待处理
                   </span>
                 )}
               </div>
@@ -484,12 +484,12 @@ export default function ListPage() {
               <div className="w-16 h-16 bg-stone-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <PlayCircle className="w-8 h-8 text-stone-400" />
               </div>
-              <h2 className="text-xl font-semibold text-stone-950 mb-2">No generations yet</h2>
+              <h2 className="text-xl font-semibold text-stone-950 mb-2">暂无生成记录</h2>
               <p className="text-stone-500 mb-6 text-sm">
-                Start by processing your first video to create clips.
+                处理第一条视频即可开始生成片段。
               </p>
               <Link href="/">
-                <Button>Create New Generation</Button>
+                <Button>新建生成</Button>
               </Link>
             </CardContent>
           </Card>
@@ -501,11 +501,11 @@ export default function ListPage() {
                 checked={allVisibleSelected ? true : someSelected ? "indeterminate" : false}
                 onCheckedChange={handleToggleAllVisible}
                 disabled={activeBatchAction !== null}
-                aria-label="Select all generations"
+                aria-label="全选所有生成"
                 className="data-[state=indeterminate]:bg-stone-400 data-[state=indeterminate]:border-stone-400"
               />
               <span className="text-xs font-medium uppercase tracking-widest text-stone-400">
-                {selectedCount > 0 ? `${selectedCount} of ${tasks.length} selected` : "Select"}
+                {selectedCount > 0 ? `已选 ${selectedCount} / ${tasks.length}` : "选择"}
               </span>
             </div>
 
@@ -540,8 +540,8 @@ export default function ListPage() {
                         disabled={activeBatchAction !== null}
                         aria-label={
                           isSelected
-                            ? `Deselect ${task.source_title}`
-                            : `Select ${task.source_title}`
+                            ? `取消选择 ${task.source_title}`
+                            : `选择 ${task.source_title}`
                         }
                       />
                     </div>
@@ -564,7 +564,7 @@ export default function ListPage() {
                             </span>
                             <Separator orientation="vertical" className="h-3" />
                             <span>
-                              {task.clips_count} {task.clips_count === 1 ? "clip" : "clips"}
+                              {task.clips_count} 个片段
                             </span>
                           </div>
                         </div>
@@ -598,13 +598,13 @@ export default function ListPage() {
                 checked={allVisibleSelected ? true : someSelected ? "indeterminate" : false}
                 onCheckedChange={handleToggleAllVisible}
                 disabled={activeBatchAction !== null}
-                aria-label="Select all"
+                aria-label="全选"
                 className="border-stone-600 data-[state=checked]:bg-white data-[state=checked]:text-stone-950 data-[state=checked]:border-white data-[state=indeterminate]:bg-stone-500 data-[state=indeterminate]:border-stone-500"
               />
               <span className="text-sm font-medium text-white tabular-nums">
                 {selectedCount}
                 <span className="text-stone-400 ml-0.5">
-                  {" "}selected
+                  {" "}项已选
                 </span>
               </span>
             </div>
@@ -627,14 +627,14 @@ export default function ListPage() {
                     ) : (
                       <PauseCircle className="w-4 h-4" />
                     )}
-                    <span className="hidden sm:inline">Cancel</span>
+                    <span className="hidden sm:inline">取消</span>
                     {cancelableCount > 0 && (
                       <span className="text-xs text-stone-500">{cancelableCount}</span>
                     )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={8}>
-                  Cancel {cancelableCount} active generation{cancelableCount === 1 ? "" : "s"}
+                  取消 {cancelableCount} 个进行中的生成
                 </TooltipContent>
               </Tooltip>
 
@@ -652,14 +652,14 @@ export default function ListPage() {
                     ) : (
                       <RotateCcw className="w-4 h-4" />
                     )}
-                    <span className="hidden sm:inline">Resume</span>
+                    <span className="hidden sm:inline">恢复</span>
                     {resumableCount > 0 && (
                       <span className="text-xs text-stone-500">{resumableCount}</span>
                     )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={8}>
-                  Resume {resumableCount} failed/cancelled generation{resumableCount === 1 ? "" : "s"}
+                  恢复 {resumableCount} 个失败或已取消的生成
                 </TooltipContent>
               </Tooltip>
 
@@ -679,11 +679,11 @@ export default function ListPage() {
                     ) : (
                       <Trash2 className="w-4 h-4" />
                     )}
-                    <span className="hidden sm:inline">Delete</span>
+                    <span className="hidden sm:inline">删除</span>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" sideOffset={8}>
-                  Delete {selectedCount} generation{selectedCount === 1 ? "" : "s"}
+                  删除 {selectedCount} 个生成任务
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -702,13 +702,13 @@ export default function ListPage() {
                   }}
                   disabled={activeBatchAction !== null}
                   className="text-stone-400 hover:text-white hover:bg-stone-800 rounded-xl"
-                  aria-label="Clear selection"
+                  aria-label="清除选择"
                 >
                   <X className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
-                Clear selection
+                清除选择
               </TooltipContent>
             </Tooltip>
           </div>
@@ -719,14 +719,13 @@ export default function ListPage() {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedCount} generation{selectedCount === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogTitle>删除这 {selectedCount} 个生成任务？</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently remove {selectedCount === 1 ? "this generation" : "these generations"} and all
-              associated clips. This cannot be undone.
+              将永久删除{selectedCount === 1 ? "该" : "这些"}任务及其全部片段，此操作无法撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={activeBatchAction === "delete"}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={activeBatchAction === "delete"}>取消</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => void handleDeleteSelected()}
               disabled={activeBatchAction === "delete" || selectedCount === 0}
@@ -735,10 +734,10 @@ export default function ListPage() {
               {activeBatchAction === "delete" ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Deleting...
+                  删除中…
                 </>
               ) : (
-                "Delete"
+                "删除"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

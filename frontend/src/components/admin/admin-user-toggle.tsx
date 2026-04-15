@@ -34,12 +34,12 @@ export function AdminUserToggle({ userId, isAdmin, isCurrentUser }: AdminUserTog
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to update user");
+        throw new Error(data.error || "更新用户失败");
       }
 
       router.refresh();
     } catch (toggleError) {
-      setError(toggleError instanceof Error ? toggleError.message : "Failed to update user");
+      setError(toggleError instanceof Error ? toggleError.message : "更新用户失败");
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +53,7 @@ export function AdminUserToggle({ userId, isAdmin, isCurrentUser }: AdminUserTog
         onClick={handleToggle}
         disabled={isLoading || (isCurrentUser && isAdmin)}
       >
-        {isLoading ? "Saving..." : isAdmin ? "Remove Admin" : "Make Admin"}
+        {isLoading ? "保存中…" : isAdmin ? "取消管理员" : "设为管理员"}
       </Button>
       {error && <span className="text-xs text-red-600">{error}</span>}
     </div>

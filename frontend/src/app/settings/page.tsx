@@ -150,7 +150,7 @@ export default function SettingsPage() {
       const data = await response.json();
 
       if (!response.ok || !data.url) {
-        throw new Error(data.error || "Unable to open billing");
+        throw new Error(data.error || "无法打开账单页面");
       }
 
       track(billingSummary.plan === "pro" ? "billing_portal_opened" : "billing_checkout_started", {
@@ -158,7 +158,7 @@ export default function SettingsPage() {
       });
       window.location.href = data.url;
     } catch (billingError) {
-      setError(billingError instanceof Error ? billingError.message : "Billing action failed");
+      setError(billingError instanceof Error ? billingError.message : "账单操作失败");
     } finally {
       setIsBillingActionLoading(false);
     }
@@ -185,7 +185,7 @@ export default function SettingsPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save preferences');
+        throw new Error(errorData.error || "保存偏好失败");
       }
 
       track("preferences_saved");
@@ -193,7 +193,7 @@ export default function SettingsPage() {
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
       console.error('Error saving preferences:', error);
-      setError(error instanceof Error ? error.message : 'Failed to save preferences');
+      setError(error instanceof Error ? error.message : "保存偏好失败");
     } finally {
       setIsLoading(false);
     }
@@ -222,13 +222,13 @@ export default function SettingsPage() {
         <div className="max-w-4xl mx-auto px-4 py-24">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-black mb-4">
-              Sign In Required
+              需要登录
             </h1>
             <p className="text-gray-600 mb-8">
-              You need to sign in to access your settings
+              请先登录以访问设置
             </p>
             <Link href="/sign-in">
-              <Button size="lg">Sign In</Button>
+              <Button size="lg">登录</Button>
             </Link>
           </div>
         </div>
@@ -245,7 +245,7 @@ export default function SettingsPage() {
             <Link href="/">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="w-4 h-4" />
-                Back
+                返回
               </Button>
             </Link>
 
@@ -253,12 +253,12 @@ export default function SettingsPage() {
               {isAdmin && (
                 <Link href="/admin">
                   <Button variant="outline" size="sm">
-                    Admin
+                    管理后台
                   </Button>
                 </Link>
               )}
               <Button variant="outline" size="sm" onClick={handleSignOut}>
-                Sign Out
+                退出登录
               </Button>
               <Avatar className="w-8 h-8">
                 <AvatarImage src={session.user.image || ""} />
@@ -282,11 +282,11 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2 mb-2">
               <Settings className="w-6 h-6 text-black" />
               <h2 className="text-2xl font-bold text-black">
-                Settings
+                设置
               </h2>
             </div>
             <p className="text-gray-600">
-              Configure your default preferences for video clip generation
+              配置剪片时的默认偏好
             </p>
           </div>
 
@@ -297,10 +297,10 @@ export default function SettingsPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-black mb-1">
-                  Default Font Settings
+                  默认字体
                 </h3>
                 <p className="text-sm text-gray-600">
-                  These settings will be applied to all new video processing tasks
+                  将应用于之后新建的视频处理任务
                 </p>
               </div>
 
@@ -308,11 +308,11 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-black flex items-center gap-2">
                   <Type className="w-4 h-4" />
-                  Font Family
+                  字体族
                 </Label>
                 <Select value={fontFamily} onValueChange={setFontFamily} disabled={isLoading}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select font" />
+                    <SelectValue placeholder="选择字体" />
                   </SelectTrigger>
                   <SelectContent>
                     {availableFonts.map((font) => (
@@ -330,7 +330,7 @@ export default function SettingsPage() {
               {/* Font Size Slider */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-black">
-                  Font Size: {fontSize}px
+                  字号：{fontSize}px
                 </Label>
                 <div className="px-2">
                   <Slider
@@ -353,7 +353,7 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-black flex items-center gap-2">
                   <Palette className="w-4 h-4" />
-                  Font Color
+                  字体颜色
                 </Label>
                 <div className="flex items-center gap-2">
                   <input
@@ -390,7 +390,7 @@ export default function SettingsPage() {
 
               {/* Preview */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium text-black">Preview</Label>
+                <Label className="text-sm font-medium text-black">预览</Label>
                 <div className="p-6 bg-black rounded-lg flex items-center justify-center min-h-[100px]">
                   <p
                     style={{
@@ -402,7 +402,7 @@ export default function SettingsPage() {
                     }}
                     className="font-medium"
                   >
-                    Your subtitle will look like this
+                    字幕预览效果
                   </p>
                 </div>
               </div>
@@ -412,18 +412,18 @@ export default function SettingsPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-semibold text-black mb-1">
-                  Notifications
+                  通知
                 </h3>
                 <p className="text-sm text-gray-600">
-                  Manage how you receive updates about your clips
+                  管理片段完成等通知方式
                 </p>
               </div>
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="completion-emails" className="flex items-center gap-2 text-sm font-medium text-black cursor-pointer">
                   <Mail className="w-4 h-4" />
-                  Completion emails
-                  <span className="text-gray-500 font-normal">— get notified when clips are ready</span>
+                  完成邮件通知
+                  <span className="text-gray-500 font-normal">— 片段就绪时发送邮件</span>
                 </Label>
                 <Switch
                   id="completion-emails"
@@ -441,7 +441,7 @@ export default function SettingsPage() {
               <Alert className="border-green-200 bg-green-50">
                 <CheckCircle className="h-4 w-4 text-green-500" />
                 <AlertDescription className="text-sm text-green-700">
-                  Preferences saved successfully!
+                  偏好已保存！
                 </AlertDescription>
               </Alert>
             )}
@@ -459,17 +459,17 @@ export default function SettingsPage() {
             {billingSummary?.monetization_enabled && (
               <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
                 <div>
-                  <h3 className="text-lg font-semibold text-black">Billing</h3>
+                  <h3 className="text-lg font-semibold text-black">账单</h3>
                   {billingSummary.plan !== "pro" && (
-                    <p className="text-sm text-gray-600">Pro plan: ${proPriceMonthly}/month</p>
+                    <p className="text-sm text-gray-600">Pro 套餐：${proPriceMonthly}/月</p>
                   )}
                   <p className="text-sm text-gray-600">
                     {billingSummary.usage_limit === null
-                      ? `${billingSummary.usage_count} generations in this billing period`
-                      : `${billingSummary.usage_count}/${billingSummary.usage_limit} generations used this period`}
+                      ? `本计费周期已生成 ${billingSummary.usage_count} 次`
+                      : `本周期已用 ${billingSummary.usage_count}/${billingSummary.usage_limit} 次生成`}
                   </p>
                   <p className="text-sm text-gray-500 capitalize">
-                    Plan: {billingSummary.plan} ({billingSummary.subscription_status})
+                    套餐：{billingSummary.plan}（{billingSummary.subscription_status}）
                   </p>
                 </div>
 
@@ -481,10 +481,10 @@ export default function SettingsPage() {
                   className="w-full"
                 >
                   {isBillingActionLoading
-                    ? "Loading..."
+                    ? "加载中…"
                     : billingSummary.plan === "pro"
-                      ? "Manage Billing"
-                      : `Upgrade to Pro ($${proPriceMonthly}/mo)`}
+                      ? "管理账单"
+                      : `升级到 Pro（$${proPriceMonthly}/月）`}
                 </Button>
               </div>
             )}
@@ -494,7 +494,7 @@ export default function SettingsPage() {
               disabled={isLoading}
               className="w-full h-11"
             >
-              {isLoading ? "Saving..." : "Save Preferences"}
+              {isLoading ? "保存中…" : "保存偏好"}
             </Button>
           </div>
         </div>
