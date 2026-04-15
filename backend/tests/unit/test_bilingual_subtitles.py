@@ -1,5 +1,9 @@
 from src.video_utils import (
+    _cjk_caption_interline_and_margin,
+    _group_words_by_pause_boundaries,
+    _text_contains_cjk,
     group_words_for_bilingual_captions,
+    group_words_for_cjk_caption_cards,
     lookup_phrase_translation,
     normalize_subtitle_phrase_key,
     normalize_subtitle_phrase_key_legacy,
@@ -74,3 +78,41 @@ def test_should_use_bilingual_off():
 def test_should_use_bilingual_requires_subtitles():
     td = {"language": "en", "text": "x", "segments": [{"words": []}]}
     assert should_use_bilingual_subtitles("on", td, False) is False
+
+
+def test_text_contains_cjk_detects_han():
+    assert _text_contains_cjk("你好") is True
+    assert _text_contains_cjk("hello") is False
+    assert _text_contains_cjk("mix 中文") is True
+
+
+def test_cjk_caption_interline_and_margin_scales_with_font():
+    interline, margin = _cjk_caption_interline_and_margin(40, 2)
+    assert interline >= 10
+    assert margin[3] >= 14 + 2
+
+
+def test_cjk_pause_boundary_prefers_sentence_end():
+    words = [
+        {"text": "我们", "start": 0.0, "end": 0.1},
+        {"text": "走吧。", "start": 0.1, "end": 0.2},
+        {"text": "明天", "start": 0.2, "end": 0.3},
+        {"text": "见", "start": 0.3, "end": 0.4},
+    ]
+    g = _group_words_by_pause_boundaries(words, default_chunk=8, max_window=24)
+    assert len(g) == 2
+    assert [w["text"] for w in g[0]] == ["我们", "走吧。"]
+    assert [w["text"] for w in g[1]] == ["明天", "见"]
+
+
+def test_group_words_for_cjk_splits_when_line_too_wide():
+    words = [{"text": "字", "start": float(i), "end": float(i) + 0.1} for i in range(40)]
+    groups = group_words_for_cjk_caption_cards(
+        words,
+        max_line_width_px=120,
+        font_path="Arial",
+        font_size=32,
+        stroke_width=0,
+    )
+    assert len(groups) >= 2
+    assert sum(len(g) for g in groups) == 40

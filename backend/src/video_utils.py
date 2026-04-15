@@ -726,20 +726,29 @@ def normalize_subtitle_phrase_key_legacy(tokens: List[str]) -> str:
 
 def _word_ends_strong_clause_boundary(text: str) -> bool:
     t = (text or "").rstrip()
-    return bool(t) and t[-1] in ".?!"
+    if not t:
+        return False
+    return t[-1] in ".?!" or t[-1] in "。！？；…"
 
 
 def _word_ends_soft_pause(text: str) -> bool:
     t = (text or "").rstrip()
-    return bool(t) and t[-1] in ",;:"
+    if not t:
+        return False
+    return t[-1] in ",;:" or t[-1] in "，、："
 
 
-def group_words_for_bilingual_captions(words: List[Dict]) -> List[List[Dict]]:
+def _group_words_by_pause_boundaries(
+    words: List[Dict],
+    *,
+    default_chunk: int,
+    max_window: int,
+) -> List[List[Dict]]:
     """
-    Split ASR words into subtitle cards for bilingual (and monolingual) rendering.
+    Group ASR tokens into subtitle cards, preferring 句读 / clause boundaries.
 
-    Prefers ~3 words per card but may use 2–5 to end on a clause boundary, so
-    each English card stays a coherent phrase for translation and matches render.
+    *default_chunk* is used when no strong/soft boundary is found in the window
+    (English: ~3; CJK monolingual: larger, e.g. 8).
     """
     if not words:
         return []
@@ -751,8 +760,8 @@ def group_words_for_bilingual_captions(words: List[Dict]) -> List[List[Dict]]:
         if remain == 1:
             groups.append(words[i : i + 1])
             break
-        hi = min(remain, 5)
-        best = min(3, hi)
+        hi = min(remain, max_window)
+        best = min(default_chunk, hi)
         found = False
         for cand in range(2, hi + 1):
             if _word_ends_strong_clause_boundary(words[i + cand - 1]["text"]):
@@ -765,9 +774,167 @@ def group_words_for_bilingual_captions(words: List[Dict]) -> List[List[Dict]]:
                     best = cand
                     found = True
                     break
+        if not found:
+            best = min(default_chunk, hi)
         groups.append(words[i : i + best])
         i += best
     return groups
+
+
+def group_words_for_bilingual_captions(words: List[Dict]) -> List[List[Dict]]:
+    """
+    Split ASR words into subtitle cards for bilingual (and monolingual) rendering.
+
+    Prefers ~3 words per card but may use 2–5 to end on a clause boundary, so
+    each English card stays a coherent phrase for translation and matches render.
+    """
+    return _group_words_by_pause_boundaries(words, default_chunk=3, max_window=5)
+
+
+def _is_cjk_char(ch: str) -> bool:
+    if not ch:
+        return False
+    o = ord(ch)
+    return 0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF
+
+
+def _words_are_primarily_cjk(words: List[Dict]) -> bool:
+    """Heuristic: clip words are mostly Chinese (pure-Chinese subtitle pipeline)."""
+    raw = "".join((w.get("text") or "") for w in words)
+    stripped = raw.replace(" ", "").replace("\n", "")
+    if not stripped:
+        return False
+    cjk = sum(1 for ch in stripped if _is_cjk_char(ch))
+    latin = sum(
+        1 for ch in stripped if ("A" <= ch <= "Z") or ("a" <= ch <= "z")
+    )
+    if latin == 0:
+        return cjk > 0
+    return cjk > latin
+
+
+def _format_subtitle_word_group(words: List[Dict], cjk_primary: bool) -> str:
+    """Join ASR tokens for display: no spaces for CJK lines; spaced for Latin."""
+    parts = [(w.get("text") or "").strip() for w in words]
+    parts = [p for p in parts if p]
+    if not parts:
+        return ""
+    if not cjk_primary:
+        return " ".join(parts)
+    return "".join(parts)
+
+
+def _measure_subtitle_line_width_px(
+    text: str,
+    font_path: str,
+    font_size: int,
+    stroke_width: int,
+) -> int:
+    """Single-line width for subtitle layout (matches label-style measurement)."""
+    if not (text or "").strip():
+        return 0
+    sw = int(stroke_width)
+    try:
+        kw: Dict[str, Any] = dict(
+            text=text,
+            font=font_path,
+            font_size=font_size,
+            color="#FFFFFF",
+            method="label",
+        )
+        if sw > 0:
+            kw["stroke_color"] = "#000000"
+            kw["stroke_width"] = sw
+        clip = TextClip(**kw)
+        w = int(clip.size[0]) if clip.size else 0
+        clip.close()
+        return w
+    except Exception:
+        est = 0.0
+        for ch in text:
+            o = ord(ch)
+            if 0x3400 <= o <= 0x9FFF:
+                est += font_size * 0.95
+            elif ch.isascii() and ch.isalnum():
+                est += font_size * 0.52
+            else:
+                est += font_size * 0.45
+        return int(est + sw * 2)
+
+
+def _split_word_group_by_max_line_width(
+    group: List[Dict],
+    max_line_width_px: int,
+    font_path: str,
+    font_size: int,
+    stroke_width: int,
+) -> List[List[Dict]]:
+    """Split one coarse group so each line fits *max_line_width_px* (CJK, no spaces)."""
+    if not group:
+        return []
+
+    def join_g(g: List[Dict]) -> str:
+        return _format_subtitle_word_group(g, True)
+
+    if (
+        _measure_subtitle_line_width_px(
+            join_g(group), font_path, font_size, stroke_width
+        )
+        <= max_line_width_px
+    ):
+        return [group]
+
+    out: List[List[Dict]] = []
+    buf: List[Dict] = []
+    for w in group:
+        trial = buf + [w]
+        line = join_g(trial)
+        tw = _measure_subtitle_line_width_px(line, font_path, font_size, stroke_width)
+        if tw <= max_line_width_px:
+            buf = trial
+            continue
+        if buf:
+            out.append(buf)
+            buf = [w]
+            one = join_g(buf)
+            ow = _measure_subtitle_line_width_px(
+                one, font_path, font_size, stroke_width
+            )
+            if ow > max_line_width_px:
+                out.append(buf)
+                buf = []
+        else:
+            out.append([w])
+    if buf:
+        out.append(buf)
+    return out
+
+
+def group_words_for_cjk_caption_cards(
+    words: List[Dict],
+    max_line_width_px: int,
+    font_path: str,
+    font_size: int,
+    stroke_width: int,
+) -> List[List[Dict]]:
+    """
+    Group ASR words into subtitle cards for primarily-Chinese clips: prefer
+    punctuation / pause boundaries, then enforce max line width so caption
+    does not wrap awkwardly.
+    """
+    if not words:
+        return []
+    coarse = _group_words_by_pause_boundaries(
+        words, default_chunk=8, max_window=24
+    )
+    flat: List[List[Dict]] = []
+    for g in coarse:
+        flat.extend(
+            _split_word_group_by_max_line_width(
+                g, max_line_width_px, font_path, font_size, stroke_width
+            )
+        )
+    return flat
 
 
 def lookup_phrase_translation(
@@ -860,6 +1027,29 @@ def _primary_cjk_stroke_width(font_path: str, base_stroke: int) -> int:
     if base_stroke <= 0 or not _cjk_fallback_font_path(font_path):
         return base_stroke
     return min(12, max(base_stroke + 1, int(round(base_stroke * 1.35))))
+
+
+def _text_contains_cjk(text: str) -> bool:
+    """True if *text* includes CJK ideographs (e.g. Chinese subtitles)."""
+    for ch in text:
+        o = ord(ch)
+        if 0x3400 <= o <= 0x4DBF or 0x4E00 <= o <= 0x9FFF:
+            return True
+    return False
+
+
+def _cjk_caption_interline_and_margin(
+    font_size: int, base_stroke: int
+) -> Tuple[int, Tuple[int, int, int, int]]:
+    """Line spacing and padding for CJK caption TextClips (matches bilingual zh line)."""
+    interline = max(10, int(round(font_size * 0.26)))
+    margin = (
+        max(4, int(font_size * 0.12)),
+        max(6, int(font_size * 0.16)),
+        max(4, int(font_size * 0.12)),
+        max(14, int(font_size * 0.36) + base_stroke),
+    )
+    return interline, margin
 
 
 def _bilingual_text_clip_from_template(
@@ -1157,9 +1347,24 @@ def create_static_subtitles(
     max_text_width = get_subtitle_max_width(video_width)
     logger.info(f"Static subtitles - calculated_font_size: {calculated_font_size}, position_y: {position_y}, max_text_width: {max_text_width}")
 
-    words_per_subtitle = 3
-    for i in range(0, len(relevant_words), words_per_subtitle):
-        word_group = relevant_words[i : i + words_per_subtitle]
+    cjk_primary = _words_are_primarily_cjk(relevant_words)
+    stroke_for_layout = int(template.get("stroke_width", 1))
+    if cjk_primary:
+        word_groups = group_words_for_cjk_caption_cards(
+            relevant_words,
+            max_text_width,
+            processor.font_path,
+            calculated_font_size,
+            stroke_for_layout,
+        )
+    else:
+        wps = 3
+        word_groups = [
+            relevant_words[i : i + wps]
+            for i in range(0, len(relevant_words), wps)
+        ]
+
+    for word_group in word_groups:
         if not word_group:
             continue
 
@@ -1170,26 +1375,40 @@ def create_static_subtitles(
         if segment_duration < 0.1:
             continue
 
-        text = " ".join(word["text"] for word in word_group)
+        text = _format_subtitle_word_group(word_group, cjk_primary)
 
         try:
             stroke_color = template.get("stroke_color", "black")
             stroke_width = template.get("stroke_width", 1)
 
-            text_clip = (
-                TextClip(
-                    text=text,
-                    font=processor.font_path,
-                    font_size=calculated_font_size,
-                    color=template["font_color"],
-                    stroke_color=stroke_color if stroke_color else None,
-                    stroke_width=stroke_width,
-                    method="caption",
-                    size=(max_text_width, None),
-                    text_align="center",
-                    vertical_align="bottom",
-                    interline=6,
+            use_cjk = cjk_primary or _text_contains_cjk(text)
+            interline = 6
+            margin = None
+            sw = stroke_width
+            if use_cjk:
+                interline, margin = _cjk_caption_interline_and_margin(
+                    calculated_font_size, stroke_width
                 )
+                sw = _primary_cjk_stroke_width(processor.font_path, stroke_width)
+
+            tc_kw: Dict[str, Any] = dict(
+                text=text,
+                font=processor.font_path,
+                font_size=calculated_font_size,
+                color=template["font_color"],
+                stroke_color=stroke_color if stroke_color else None,
+                stroke_width=sw,
+                method="caption",
+                size=(max_text_width, None),
+                text_align="center",
+                vertical_align="bottom",
+                interline=interline,
+            )
+            if margin is not None:
+                tc_kw["margin"] = margin
+
+            text_clip = (
+                TextClip(**tc_kw)
                 .with_duration(segment_duration)
                 .with_start(segment_start)
             )
@@ -1234,7 +1453,22 @@ def create_karaoke_subtitles(
     max_text_width = get_subtitle_max_width(video_width)
     horizontal_padding = max(40, int(video_width * 0.06))
 
-    words_per_group = 3
+    cjk_primary = _words_are_primarily_cjk(relevant_words)
+    stroke_for_layout = int(template.get("stroke_width", 1))
+    if cjk_primary:
+        word_groups = group_words_for_cjk_caption_cards(
+            relevant_words,
+            max_text_width,
+            processor.font_path,
+            calculated_font_size,
+            stroke_for_layout,
+        )
+    else:
+        wpg = 3
+        word_groups = [
+            relevant_words[i : i + wpg]
+            for i in range(0, len(relevant_words), wpg)
+        ]
 
     def measure_word_group_width(word_group: List[Dict], font_size: int) -> List[int]:
         widths: List[int] = []
@@ -1252,8 +1486,7 @@ def create_karaoke_subtitles(
             temp_clip.close()
         return widths
 
-    for group_idx in range(0, len(relevant_words), words_per_group):
-        word_group = relevant_words[group_idx : group_idx + words_per_group]
+    for word_group in word_groups:
         if not word_group:
             continue
 
@@ -1275,8 +1508,10 @@ def create_karaoke_subtitles(
                 word_clips_for_composite = []
                 font_size_for_group = calculated_font_size
                 word_widths = measure_word_group_width(word_group, font_size_for_group)
-                space_width = font_size_for_group * 0.28
-                total_width = sum(word_widths) + space_width * (len(word_group) - 1)
+                space_width = 0.0 if cjk_primary else font_size_for_group * 0.28
+                total_width = sum(word_widths) + space_width * max(
+                    0, len(word_group) - 1
+                )
 
                 if total_width > max_text_width and total_width > 0:
                     shrink_ratio = max_text_width / total_width
@@ -1286,8 +1521,10 @@ def create_karaoke_subtitles(
                     word_widths = measure_word_group_width(
                         word_group, font_size_for_group
                     )
-                    space_width = font_size_for_group * 0.28
-                    total_width = sum(word_widths) + space_width * (len(word_group) - 1)
+                    space_width = 0.0 if cjk_primary else font_size_for_group * 0.28
+                    total_width = sum(word_widths) + space_width * max(
+                        0, len(word_group) - 1
+                    )
 
                 # Second pass: create positioned clips
                 current_x = max(horizontal_padding, (video_width - total_width) / 2)
@@ -1353,98 +1590,34 @@ def create_pop_subtitles(
         font_family, template["font_size"], template["font_color"],
         text_for_font_detection=full_text_for_detection
     )
-    logger.info(f"Pop subtitles - processor font path: {processor.font_path}")
-
-    calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
-    position_y = template.get("position_y", 0.75)
-    max_text_width = get_subtitle_max_width(video_width)
-    logger.info(f"Pop subtitles - calculated_font_size: {calculated_font_size}, position_y: {position_y}, max_text_width: {max_text_width}")
-
-    words_per_group = 3
-
-    for group_idx in range(0, len(relevant_words), words_per_group):
-        word_group = relevant_words[group_idx : group_idx + words_per_group]
-        if not word_group:
-            continue
-
-        # Show the full group text
-        group_text = " ".join(w["text"] for w in word_group)
-        group_start = word_group[0]["start"]
-        group_end = word_group[0]["end"] # Changed to word_group[0]["end"]
-        group_duration = group_end - group_start
-
-        if group_duration < 0.1:
-            continue
-
-        try:
-            stroke_color = template.get("stroke_color", "black")
-            stroke_width = template.get("stroke_width", 2)
-
-            logger.info(f"Pop subtitles - Attempting TextClip creation: text='{group_text}', font='{processor.font_path}', size={calculated_font_size}, color='{template['font_color']}', stroke_color='{stroke_color}', stroke_width={stroke_width}")
-            
-            text_clip = (
-                TextClip(
-                    text=group_text,
-                    font=processor.font_path,
-                    font_size=calculated_font_size,
-                    color=template["font_color"],
-                    stroke_color=stroke_color if stroke_color else None,
-                    stroke_width=stroke_width,
-                    method="caption",
-                    size=(max_text_width, None),
-                    text_align="center",
-                    interline=6,
-                )
-                .with_duration(group_duration)
-                .with_start(group_start)
-            )
-            logger.info(f"Pop subtitles - TextClip created: text='{group_text}' size={text_clip.size} start={group_start} end={group_end}")
-
-            text_height = text_clip.size[1] if text_clip.size else 40
-            vertical_position = get_safe_vertical_position(
-                video_height, text_height, position_y
-            )
-            logger.info(f"Pop subtitles - text_height: {text_height}, vertical_position: {vertical_position}")
-            text_clip = text_clip.with_position(("center", vertical_position))
-
-            subtitle_clips.append(text_clip)
-
-        except Exception as e:
-            logger.error(f"Failed to create pop subtitle for text '{group_text}': {e}", exc_info=True)
-            continue
-
-    logger.info(f"Created {len(subtitle_clips)} pop subtitle elements")
-    return subtitle_clips
-
-def create_pop_subtitles(
-    relevant_words: List[Dict],
-    video_width: int,
-    video_height: int,
-    template: Dict,
-    font_family: str,
-) -> List[TextClip]:
-    subtitle_clips = []
-
-    # Pass the full text to the processor for font detection
-    full_text_for_detection = " ".join(w["text"] for w in relevant_words)
-    processor = VideoProcessor(
-        font_family, template["font_size"], template["font_color"],
-        text_for_font_detection=full_text_for_detection
-    )
 
     calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
     position_y = template.get("position_y", 0.75)
     max_text_width = get_subtitle_max_width(video_width)
 
-    words_per_group = 3
+    cjk_primary = _words_are_primarily_cjk(relevant_words)
+    stroke_for_layout = int(template.get("stroke_width", 2))
+    if cjk_primary:
+        word_groups = group_words_for_cjk_caption_cards(
+            relevant_words,
+            max_text_width,
+            processor.font_path,
+            calculated_font_size,
+            stroke_for_layout,
+        )
+    else:
+        wpg = 3
+        word_groups = [
+            relevant_words[i : i + wpg]
+            for i in range(0, len(relevant_words), wpg)
+        ]
 
-    for group_idx in range(0, len(relevant_words), words_per_group):
-        word_group = relevant_words[group_idx : group_idx + words_per_group]
+    for word_group in word_groups:
         if not word_group:
             continue
 
         # Show the full group text
-        group_text = " ".join(w["text"] for w in word_group)
+        group_text = _format_subtitle_word_group(word_group, cjk_primary)
         group_start = word_group[0]["start"]
         group_end = word_group[-1]["end"]
         group_duration = group_end - group_start
@@ -1455,23 +1628,39 @@ def create_pop_subtitles(
         try:
             stroke_color = template.get("stroke_color", "black")
             stroke_width = template.get("stroke_width", 2)
-            
-            logger.debug(f"Pop subtitles - Attempting TextClip creation: text='{group_text}', font='{processor.font_path}', size={calculated_font_size}, color='{template['font_color']}', stroke_color='{stroke_color}', stroke_width={stroke_width}")
 
-            # Create main text clip
-            text_clip = (
-                TextClip(
-                    text=group_text,
-                    font=processor.font_path,
-                    font_size=calculated_font_size,
-                    color=template["font_color"],
-                    stroke_color=stroke_color,
-                    stroke_width=stroke_width,
-                    method="caption",
-                    size=(max_text_width, None),
-                    text_align="center",
-                    interline=6,
+            use_cjk = cjk_primary or _text_contains_cjk(group_text)
+            interline = 6
+            margin = None
+            sw = stroke_width
+            if use_cjk:
+                interline, margin = _cjk_caption_interline_and_margin(
+                    calculated_font_size, stroke_width
                 )
+                sw = _primary_cjk_stroke_width(processor.font_path, stroke_width)
+
+            logger.debug(
+                f"Pop subtitles - Attempting TextClip creation: text='{group_text}', font='{processor.font_path}', size={calculated_font_size}, color='{template['font_color']}', stroke_color='{stroke_color}', stroke_width={sw}"
+            )
+
+            tc_kw: Dict[str, Any] = dict(
+                text=group_text,
+                font=processor.font_path,
+                font_size=calculated_font_size,
+                color=template["font_color"],
+                stroke_color=stroke_color if stroke_color else None,
+                stroke_width=sw,
+                method="caption",
+                size=(max_text_width, None),
+                text_align="center",
+                vertical_align="bottom" if use_cjk else "center",
+                interline=interline,
+            )
+            if margin is not None:
+                tc_kw["margin"] = margin
+
+            text_clip = (
+                TextClip(**tc_kw)
                 .with_duration(group_duration)
                 .with_start(group_start)
             )
@@ -1516,14 +1705,28 @@ def create_fade_subtitles(
     background_color = template.get("background_color", "#00000080")
     max_text_width = get_subtitle_max_width(video_width)
 
-    words_per_group = 4
+    cjk_primary = _words_are_primarily_cjk(relevant_words)
+    stroke_for_layout = int(template.get("stroke_width", 0))
+    if cjk_primary:
+        word_groups = group_words_for_cjk_caption_cards(
+            relevant_words,
+            max_text_width,
+            processor.font_path,
+            calculated_font_size,
+            stroke_for_layout,
+        )
+    else:
+        wpg = 4
+        word_groups = [
+            relevant_words[i : i + wpg]
+            for i in range(0, len(relevant_words), wpg)
+        ]
 
-    for group_idx in range(0, len(relevant_words), words_per_group):
-        word_group = relevant_words[group_idx : group_idx + words_per_group]
+    for word_group in word_groups:
         if not word_group:
             continue
 
-        group_text = " ".join(w["text"] for w in word_group)
+        group_text = _format_subtitle_word_group(word_group, cjk_primary)
         group_start = word_group[0]["start"]
         group_end = word_group[-1]["end"]
         group_duration = group_end - group_start
@@ -1532,8 +1735,18 @@ def create_fade_subtitles(
             continue
 
         try:
-            # Create text clip
-            text_clip = TextClip(
+            stroke_width = int(template.get("stroke_width", 0))
+            use_cjk = cjk_primary or _text_contains_cjk(group_text)
+            interline = 6
+            margin = None
+            sw = stroke_width
+            if use_cjk:
+                interline, margin = _cjk_caption_interline_and_margin(
+                    calculated_font_size, stroke_width
+                )
+                sw = _primary_cjk_stroke_width(processor.font_path, stroke_width)
+
+            tc_kw: Dict[str, Any] = dict(
                 text=group_text,
                 font=processor.font_path,
                 font_size=calculated_font_size,
@@ -1541,12 +1754,17 @@ def create_fade_subtitles(
                 stroke_color=template.get("stroke_color")
                 if template.get("stroke_color")
                 else None,
-                stroke_width=template.get("stroke_width", 0),
+                stroke_width=sw,
                 method="caption",
                 size=(max_text_width, None),
                 text_align="center",
-                interline=6,
+                interline=interline,
             )
+            if use_cjk:
+                tc_kw["vertical_align"] = "bottom"
+                tc_kw["margin"] = margin
+
+            text_clip = TextClip(**tc_kw)
 
             text_height = text_clip.size[1] if text_clip.size else 40
             text_width = text_clip.size[0] if text_clip.size else 200
