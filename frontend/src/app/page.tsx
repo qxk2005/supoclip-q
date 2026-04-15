@@ -12,12 +12,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { signOut, useSession } from "@/lib/auth-client";
 import { track } from "@/lib/datafast";
 import { formatSupportMessage, parseApiError } from "@/lib/api-error";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush, Film, Sparkles, Upload, Monitor, Menu, X, LogOut, List, Shield, Settings } from "lucide-react";
+import { ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, Paintbrush, Film, Sparkles, Upload, Monitor, Menu, X, LogOut, List, Shield,  Settings2,
+  HelpCircle,
+  Languages,
+  Zap,
+} from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import LandingPage from "@/components/landing-page";
 import { isLandingOnlyModeEnabled } from "@/lib/app-flags";
@@ -94,6 +99,9 @@ export default function Home() {
   const [currentStep, setCurrentStep] = useState("");
   const [sourceType, setSourceType] = useState<"youtube" | "upload">("youtube");
   const [fileName, setFileName] = useState<string | null>(null);
+  const [processingMode, setProcessingMode] = useState("fast");
+  const [chunkSize, setChunkSize] = useState("15000");
+  const [language, setLanguage] = useState("auto");
   const [error, setError] = useState<string | null>(null);
   const [sourceTitle, setSourceTitle] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -448,9 +456,9 @@ export default function Home() {
           },
           caption_template: captionTemplate,
           include_broll: includeBroll,
-          processing_mode: "fast",
-          output_format: outputFormat,
-          add_subtitles: addSubtitles
+          processing_mode: processingMode,
+          chunk_size: parseInt(chunkSize, 10) || 15000,
+          language: language,
         }),
       });
 
@@ -857,6 +865,94 @@ export default function Home() {
                   </div>
                 )}
               </div>
+
+              {/* AI Settings Section */}
+              <Card className="border-stone-200">
+                <CardContent className="px-4 pt-0 pb-2.5 space-y-2.5">
+                  <div className="flex items-center gap-2 text-sm font-medium text-stone-900">
+                    <Languages className="w-4 h-4" />
+                    AI Settings
+                  </div>
+
+                  {/* Video Language Selector */}
+                  <div className="space-y-2">
+                    <label className="text-sm text-stone-600 flex items-center gap-2">
+                      <Languages className="w-3.5 h-3.5" />
+                      Video Language
+                    </label>
+                    <Select value={language} onValueChange={setLanguage} disabled={isLoading}>
+                      <SelectTrigger className="w-full h-11">
+                        <SelectValue placeholder="Select language" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto-Detect</SelectItem>
+                        <SelectItem value="en">English</SelectItem>
+                        <SelectItem value="zh">Chinese</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* AI Analysis Chunk Size Input */}
+                  <div className="space-y-2">
+                    <label className="text-sm text-stone-600 flex items-center gap-2">
+                      <Settings2 className="w-3.5 h-3.5" />
+                      AI Analysis Chunk Size
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-500" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>
+                              For very long videos, the AI analysis is split into chunks. Smaller values use less
+                              memory but may lose some context. Default is 15000.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </label>
+                    <Input
+                      id="chunk-size"
+                      type="number"
+                      value={chunkSize}
+                      onChange={(e) => setChunkSize(e.target.value)}
+                      placeholder="e.g., 15000"
+                      disabled={isLoading}
+                      className="w-full h-11"
+                    />
+                  </div>
+
+                  {/* Processing Mode Selector */}
+                  <div className="space-y-2">
+                    <label className="text-sm text-stone-600 flex items-center gap-2">
+                      <Zap className="w-3.5 h-3.5" />
+                      Processing Mode
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-500" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>
+                              &quot;Fast&quot; generates a few key clips quickly. &quot;Balanced&quot; offers a mix of speed and quantity. &quot;Quality&quot; finds all potential clips but takes longer.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </label>
+                    <Select value={processingMode} onValueChange={setProcessingMode} disabled={isLoading}>
+                      <SelectTrigger className="w-full h-11">
+                        <SelectValue placeholder="Select mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fast">Fast</SelectItem>
+                        <SelectItem value="balanced">Balanced</SelectItem>
+                        <SelectItem value="quality">Quality</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Caption & Style Section */}
               <Card className="border-stone-200">

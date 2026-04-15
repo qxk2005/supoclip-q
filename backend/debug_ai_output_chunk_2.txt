@@ -1,0 +1,324 @@
+Thinking Process:
+
+1.  **Analyze the Request:**
+    *   **Role:** Expert transcript analyst for short-form video editing.
+    *   **Task:** Identify and extract the best clip candidates from the provided transcript.
+    *   **Core Objectives:** Engaging, informative, entertaining segments suitable for social media (Shorts/Reels/TikTok). Complete thoughts, strong hooks, emotional moments, valuable info.
+    *   **Grounding Rules:** Use only provided transcript lines/timestamps. No invention. Contiguous blocks only. Text must match transcript.
+    *   **Selection Criteria:** Strong hooks, valuable content, emotional moments, complete thoughts, entertaining.
+    *   **Viral Scoring:** 0-100 total (Hook, Engagement, Value, Shareability - each 0-25).
+    *   **Timing:** Ideally 10-60 seconds.
+    *   **Accuracy:** Critical. Do not fabricate timestamps or text. Prioritize accuracy over "viral" if there's a tradeoff.
+
+2.  **Analyze the Transcript:**
+    *   **Content:** It appears to be a tech review or summary video about iPhone models, specifically focusing on a hypothetical or future scenario (iPhone 17, iPhone Air, 2025). It starts mid-sentence/mid-thought about an older model (likely iPhone 15 or 16 based on context clues like "C1 modem", "USB-C", "Action button"), then moves to trivia, then introduces the "iPhone 17 series".
+    *   **Timestamps:** Range from [14:52] to [18:21].
+    *   **Structure:**
+        *   14:52 - 15:20: Specs of a previous model (likely iPhone 15/16 base model).
+        *   15:21 - 15:45: Trivia segment about total iPhones sold.
+        *   15:47 - 15:56: Intro hook for the new lineup ("Today, we're raising the bar...").
+        *   16:08 - 17:01: iPhone 17 standard model specs.
+        *   17:01 - 17:23: iPhone Air reveal (thinness, price, chip).
+        *   17:25 - 18:13: iPhone 17 Pro/Max specs and pricing.
+        *   18:14 - 18:21: Outro/Thank you.
+
+3.  **Identify Potential Segments:**
+
+    *   *Segment 1: The Trivia Hook.* (15:21 - 15:45)
+        *   Content: "Trivia time. How many iPhones have been sold since 2007? ... C, Apple has sold over 3 billion iPhones. If everyone who bought one formed a country, iPhone land would be the most populated nation on earth by far."
+        *   Why: Strong hook ("Trivia time"), interactive element (A, B, C), surprising fact (3 billion), visualizable analogy (iPhone land).
+        *   Length: ~24 seconds. Good for Shorts.
+
+    *   *Segment 2: The iPhone Air Reveal.* (17:01 - 17:23)
+        *   Content: "But the real spotlight was on the iPhone Air. Apple called it the thinnest iPhone ever with the power of Pro inside. Despite its slim frame, it runs on the A19 Pro chip, but includes only a single 48-megapixel main camera. Nonetheless, it blends elegance with serious performance, starting at $999."
+        *   Why: "iPhone Air" is a new/conceptual product (likely high interest). "Thinnest iPhone ever" is a strong hook. Price reveal adds value.
+        *   Length: ~22 seconds. Good for Shorts.
+
+    *   *Segment 3: iPhone 17 Pro Max Upgrades.* (17:25 - 18:05)
+        *   Content: "For power users, the iPhone 17 Pro and Pro Max push things even further. Our fastest chip, our longest battery life, and our most cinematic camera, the Ultimate Pro. iPhone 17 Pro. Both use an all-new aluminum unibody for greater durability and feature new Ceramic Shield protection on both the front and back. They come with three powerful 48-megapixel cameras, including a new telephoto lens for sharp resume and deliver the best battery life ever on an iPhone, now paired with faster charging."
+        *   Why: Targets power users. Lists key upgrades (battery, camera, chip). "Best battery life ever" is a strong claim.
+        *   Length: ~40 seconds. Good for Shorts/Reels.
+        *   *Correction:* The transcript says "sharp resume" which is likely a transcription error for "sharp zoom", but I must stick to the transcript text. I will select this but note the text must match exactly.
+        *   *Refinement:* Maybe cut slightly to make it punchier. 17:25 - 18:05 is 40 seconds. Let's look at 17:25 - 18:13 to include pricing? Pricing is important. 17:25 - 18:13 is 48 seconds. Still under 60. Let's include pricing for completeness.
+
+    *   *Segment 4: The Intro Hook for the New Lineup.* (15:47 - 16:00 approx)
+        *   Content: "Today, we're raising the bar once again with an all-new iPhone lineup that's unlike anything we've ever created, and it starts now."
+        *   Why: High energy, sets the stage.
+        *   Issue: It's very short (9 seconds). Might be better combined with the iPhone 17 standard specs.
+        *   Combination: 15:47 - 16:17 (Intro + iPhone 17 reveal). "Today, we're raising the bar... In September 2025, Apple unveiled the iPhone 17 series, headlined by the surprise debut of the iPhone Air."
+        *   Length: ~30 seconds.
+        *   Why: Sets context (2025), mentions surprise debut.
+
+    *   *Segment 5: Previous Model Summary (Value Proposition).* (15:04 - 15:20)
+        *   Content: "Battery life was a big step up, reaching 26 hours. It also added USB-C, a customizable action button, and Apple's first in-house 5G modem, the C1. It skipped a few features, but offered solid value for the price."
+        *   Why: Informative summary. USB-C and Action Button are key keywords.
+        *   Length: ~16 seconds. A bit short but informative.
+        *   Decision: The Trivia and iPhone Air/17 segments are stronger for viral potential. I'll prioritize the newer stuff and the trivia.
+
+4.  **Select Best Segments:**
+
+    *   **Clip 1: The 3 Billion iPhones Trivia.** (High Shareability)
+        *   Start: 15:21
+        *   End: 15:45
+        *   Reasoning: Interactive, surprising stat, visual analogy.
+
+    *   **Clip 2: iPhone Air Reveal.** (High Hook/Interest)
+        *   Start: 17:01
+        *   End: 17:23
+        *   Reasoning: "iPhone Air" is a buzzword. Thinnest ever. Price point.
+
+    *   **Clip 3: iPhone 17 Pro/Max Ultimate Specs.** (High Value for Tech Audience)
+        *   Start: 17:25
+        *   End: 18:13
+        *   Reasoning: Covers the flagship specs, battery claims, and pricing. Complete thought on the Pro models.
+
+    *   **Clip 4: iPhone 17 Standard & Intro.** (Good Context)
+        *   Start: 15:47
+        *   End: 16:17
+        *   Reasoning: Introduces the 2025 timeline and the main lineup. Good setup clip.
+
+    *   *Self-Correction on Clip 4:* The transition from 15:56 ("it starts now") to 16:08 ("In September 2025") has a gap in timestamps (15:56 to 16:08). The instructions say "Select only contiguous ranges that already exist in the transcript." and "Do not merge separate non-contiguous moments into one segment."
+    *   Looking at the transcript provided:
+        [15:55 - 15:56] and it starts now.
+        [16:08 - 16:13] In September 2025...
+    *   There is a gap between 15:56 and 16:08 in the provided text. I cannot bridge this gap if the text isn't there. I must use contiguous lines provided.
+    *   So, Clip 4 should probably start at 16:08.
+    *   Revised Clip 4: 16:08 - 16:40 (iPhone 17 Standard Intro + Display + Glass). Or 16:08 - 17:01 (Full Standard Model).
+    *   Let's make Clip 4 the iPhone 17 Standard Model overview. 16:08 - 17:01. That's 53 seconds. Perfect.
+
+    *   *Re-evaluating Clip 3 (Pro Models):* 17:25 - 18:13 is 48 seconds. Perfect.
+
+    *   *Re-evaluating Clip 1 (Trivia):* 15:21 - 15:45 is 24 seconds. Perfect.
+
+    *   *Re-evaluating Clip 2 (Air):* 17:01 - 17:23 is 22 seconds. Perfect.
+
+    *   *Check Timestamps:* Ensure I use the exact timestamps from the lines.
+    *   Clip 1: Start [15:21], End [15:45].
+    *   Clip 2: Start [17:01], End [17:23].
+    *   Clip 3: Start [16:08], End [17:01]. (iPhone 17 Standard)
+    *   Clip 4: Start [17:25], End [18:13]. (iPhone 17 Pro/Max)
+
+    *   Wait, I need to check if 16:08 - 17:01 is contiguous.
+    *   Lines: 16:08, 16:13, 16:17, 16:21, 16:24, 16:27, 16:29, 16:33, 16:35, 16:38, 16:41, 16:45, 16:48, 16:51, 16:54, 16:58, 17:01.
+    *   Yes, these are sequential in the provided text block.
+    *   Check 17:25 - 18:13.
+    *   Lines: 17:25, 17:28, 17:31, 17:35, 17:39, 17:44, 17:47, 17:50, 17:53, 17:56, 17:59, 18:03, 18:05, 18:08, 18:13.
+    *   Yes, sequential.
+
+    *   Check 15:21 - 15:45.
+    *   Lines: 15:21, 15:22, 15:26, 15:28, 15:30, 15:34, 15:35, 15:39, 15:41, 15:45.
+    *   Yes, sequential.
+
+    *   Check 17:01 - 17:23.
+    *   Lines: 17:01, 17:04, 17:07, 17:10, 17:13, 17:18, 17:22.
+    *   Wait, 17:22 ends at 17:23.
+    *   Yes, sequential.
+
+5.  **Drafting the Output:**
+    *   Follow the requested format (Segment description, timestamps, text, virality scoring).
+    *   Ensure text matches exactly (including transcription errors like "sharp resume" if present in the selected range).
+    *   Calculate scores based on criteria.
+
+    *   *Refinement on Clip 3 (Standard Model):* 53 seconds is good, but is it as viral as the Air? The Air is more unique. The Standard model is incremental. I might prioritize the Air and the Trivia more. However, the prompt asks for "all compelling segments". I will include the Standard Model segment as it provides value/tech specs.
+    *   Actually, looking at the flow, the "iPhone 17 Standard" segment (16:08-17:01) is a bit dense. Maybe trim to the key upgrades? 16:08 - 16:40 (Display + Glass). But 16:41-17:01 (Camera + Storage + Price) is valuable. I'll keep the full contiguous block for completeness as per "Complete Thoughts" criteria.
+    *   Actually, I'll select the top 3-4 most distinct segments.
+    *   1. Trivia (15:21-15:45) - High engagement.
+    *   2. iPhone 17 Standard (16:08-17:01) - High value for tech fans.
+    *   3. iPhone Air (17:01-17:23) - High hook (New product).
+    *   4. iPhone Pro/Max (17:25-18:13) - High value (Flagship specs).
+
+    *   Wait, I need to make sure I don't overlap timestamps if possible, or if I do, ensure they are distinct segments. The prompt says "Find all compelling segments". Overlap is okay if they serve different purposes, but distinct contiguous blocks are better.
+    *   Segment 1: 15:21 - 15:45 (Trivia)
+    *   Segment 2: 16:08 - 17:01 (iPhone 17 Standard)
+    *   Segment 3: 17:01 - 17:23 (iPhone Air)
+    *   Segment 4: 17:25 - 18:13 (iPhone Pro/Max)
+    *   These are contiguous blocks that follow each other. This works.
+
+    *   One check on Segment 2 (16:08 - 17:01). Is it too long? 53 seconds. It's within the 10-60 second guideline.
+    *   One check on Segment 4 (17:25 - 18:13). 48 seconds. Within guideline.
+
+    *   Let's verify the text for Segment 4.
+    *   17:59 - 18:02: "including a new telephoto lens for sharp resume" -> This is clearly a transcription error for "zoom", but I must follow the grounding rule: "segment.text must reflect only the spoken content inside the selected time range." and "Do not invent facts...". I must copy the text as is, even if it's an error, to maintain accuracy to the transcript provided.
+
+    *   Let's verify Segment 1 text.
+    *   15:21 - 15:45.
+    *   Text: "Trivia time. How many iPhones have been sold since 2007? A, 1.7 billion. B, 2.3 billion. Or C, over 3 billion. The answer? C, Apple has sold over 3 billion iPhones. If everyone who bought one formed a country, iPhone land would be the most populated nation on earth by far."
+
+    *   Let's verify Segment 3 text.
+    *   17:01 - 17:23.
+    *   Text: "But the real spotlight was on the iPhone Air. Apple called it the thinnest iPhone ever with the power of Pro inside. Despite its slim frame, it runs on the A19 Pro chip, but includes only a single 48-megapixel main camera. Nonetheless, it blends elegance with serious performance, starting at $999."
+
+    *   Let's verify Segment 2 text.
+    *   16:08 - 17:01.
+    *   Text: "In September 2025, Apple unveiled the iPhone 17 series, headlined by the surprise debut of the iPhone Air. The standard iPhone 17 looks similar to the iPhone 16, but arrived with a larger 6.3-inch display thanks to thinner bezels. Now running pro-motion up to 120 Hertz for ultra-smooth scrolling and gaming, Apple introduced Ceramic Shield 2, claiming it is the toughest smartphone glass yet with three times better scratch resistance. The iPhone 17 also gained an 18-megapixel front camera that supports both vertical and horizontal selfies, plus a dual-fusion rear system, all powered by the new A19 chip. And at 256 gigabytes, it doubles the starting storage while keeping the same starting price."
+    *   Wait, the first line [16:08 - 16:13] mentions "headlined by the surprise debut of the iPhone Air." This overlaps conceptually with Segment 3. However, Segment 2 focuses on the "iPhone 17 series" and "standard iPhone 17". Segment 3 focuses specifically on the "iPhone Air". It might be better to start Segment 2 at 16:17 to focus on the Standard iPhone 17 specifically, to avoid redundancy with the Air segment.
+    *   If I start at 16:17: "The standard iPhone 17 looks similar to the iPhone 16..."
+    *   But 16:08 provides the context "In September 2025...". Context is important for "Complete Thoughts".
+    *   I will keep 16:08 but acknowledge the Air mention is a headline there, while Segment 3 details the Air. This is acceptable as they are distinct clips (One about the Standard/Lineup intro, one about the Air specifically).
+    *   Actually, to make Segment 2 more focused on the Standard Model (which the bulk of the text is), I could start at 16:17. But 16:08 sets the date. Let's keep 16:08 for context. It's still under 60s.
+
+    *   Wait, looking closely at 16:08-16:13: "In September 2025, Apple unveiled the iPhone 17 series, headlined by the surprise debut of the iPhone Air."
+    *   If I use this in Segment 2, and then Segment 3 is "But the real spotlight was on the iPhone Air", it flows well as a series.
+    *   Okay, proceeding with these 4 segments.
+
+    *   Wait, I need to check the Virality Scoring again.
+    *   Trivia: High Shareability (people love facts), High Engagement (quiz format).
+    *   iPhone Air: High Hook (New product), High Engagement (Design/Price).
+    *   iPhone 17 Standard: High Value (Specs), Moderate Hook.
+    *   iPhone Pro: High Value (Specs), Moderate Hook.
+
+    *   I will prioritize the top 3 most viral ones if I need to choose, but the prompt says "Find all compelling segments". I'll provide the 4 identified.
+    *   Actually, looking at the length and density, Segment 2 (Standard) is a bit dry compared to Air and Trivia. I'll include it but score it accordingly.
+    *   Segment 4 (Pro) is also dense.
+    *   I'll ensure the scoring reflects the content type (Info vs Entertainment).
+
+    *   One more check: "Do not merge separate non-contiguous moments into one segment."
+    *   My segments are contiguous blocks of the provided transcript lines.
+    *   Segment 1: 15:21 to 15:45. (Lines exist continuously in that range).
+    *   Segment 2: 16:08 to 17:01. (Lines exist continuously).
+    *   Segment 3: 17:01 to 17:23. (Lines exist continuously).
+    *   Segment 4: 17:25 to 18:13. (Lines exist continuously).
+
+    *   Wait, check continuity between 15:45 and 16:08. There is a gap (15:47-15:56 exists, but 15:56 to 16:08 is a gap).
+    *   My Segment 1 ends at 15:45.
+    *   My Segment 2 starts at 16:08.
+    *   This is fine, they are separate segments.
+    *   Check continuity between 17:01 (End of Seg 2) and 17:01 (Start of Seg 3).
+    *   Segment 2 ends at 17:01. Segment 3 starts at 17:01.
+    *   Line [17:01 - 17:04] "But the real spotlight was on the iPhone Air."
+    *   If I end Segment 2 at 17:01, does it include that line?
+    *   Segment 2 End Time: 17:01. The line is [17:01 - 17:04].
+    *   If I set end_time to 17:01, I exclude the text of that line.
+    *   Segment 2 Text should end at "while keeping the same starting price." (16:58 - 17:01).
+    *   Segment 3 Text should start at "But the real spotlight was on the iPhone Air." (17:01 - 17:04).
+    *   This is a clean cut.
+    *   Check Segment 3 End: 17:23. Line [17:22 - 17:23] "starting at $999."
+    *   Check Segment 4 Start: 17:25. Line [17:25 - 17:28] "For power users..."
+    *   There is a small gap between 17:23 and 17:25. This is fine, they are separate segments.
+
+    *   Final check on timestamps.
+    *   Segment 1: 15:21 - 15:45.
+    *   Segment 2: 16:08 - 17:01.
+    *   Segment 3: 17:01 - 17:23.
+    *   Segment 4: 17:25 - 18:13.
+
+    *   Wait, I should check if Segment 2 is too long. 16:08 to 17:01 is 53 seconds. It's close to the 60s limit. It works.
+    *   Segment 4: 17:25 to 18:13 is 48 seconds. Works.
+
+    *   Let's assemble the response.
+
+    *   Wait, one detail in Segment 4 text: "sharp resume". I will keep it as is per grounding rules.
+    *   One detail in Segment 2 text: "headlined by the surprise debut of the iPhone Air." This hints at Segment 3. It's okay.
+
+    *   Scoring Strategy:
+        *   Trivia: High Hook (Question), High Engagement (Quiz), High Shareability (Fact).
+        *   Air: High Hook (New Product), High Engagement (Design/Price).
+        *   Standard: High Value (Specs), Lower Hook.
+        *   Pro: High Value (Specs), Lower Hook.
+
+    *   I will format the output clearly.
+
+    *   Wait, I need to make sure I don't miss the "Intro Hook" segment (15:47-15:56). "Today, we're raising the bar...". It's only 9 seconds. Too short for a standalone unless paired. Since I can't pair it (gap to 16:08), I will skip it as it lacks enough context to stand alone effectively without the following content. The prompt says "If a span lacks enough context to stand alone, expand to nearby contiguous lines". I can't expand across the gap. So I will omit this short fragment to prioritize quality/complete thoughts.
+
+    *   Final Plan:
+        1.  Trivia Segment (15:21-15:45)
+        2.  iPhone 17 Standard Segment (16:08-17:01)
+        3.  iPhone Air Segment (17:01-17:23)
+        4.  iPhone Pro Segment (17:25-18:13)
+
+    *   Wait, looking at Segment 2 again. 16:08 mentions iPhone Air. Segment 3 is ABOUT iPhone Air.
+    *   If I use Segment 2, it spoils Segment 3 slightly? No, Segment 2 says "headlined by... Air" then talks about Standard. Segment 3 says "But the real spotlight was on... Air". It flows.
+    *   However, for a standalone short, Segment 2 is "iPhone 17 Standard Review". Segment 3 is "iPhone Air Review". They work independently.
+    *   Okay, ready to write.
+
+    *   One last check on timestamps for Segment 1.
+    *   Start: 15:21 (Trivia time.)
+    *   End: 15:45 (by far.)
+    *   Text matches lines [15:21] through [15:45].
+
+    *   One last check on timestamps for Segment 2.
+    *   Start: 16:08 (In September 2025...)
+    *   End: 17:01 (while keeping the same starting price.)
+    *   Text matches lines [16:08] through [17:01].
+
+    *   One last check on timestamps for Segment 3.
+    *   Start: 17:01 (But the real spotlight...)
+    *   End: 17:23 (starting at $999.)
+    *   Text matches lines [17:01] through [17:23].
+
+    *   One last check on timestamps for Segment 4.
+    *   Start: 17:25 (For power users...)
+    *   End: 18:13 (while the Pro Max remains at $1,199.)
+    *   Text matches lines [17:25] through [18:13].
+    *   Note: I will exclude the Outro (18:14+) as it's not compelling content for a viral clip (just thanks).
+
+    *   Wait, I need to ensure I don't exceed the 60 second limit too much.
+    *   Seg 2: 53s.
+    *   Seg 4: 48s.
+    *   These are safe.
+
+    *   Let's double check the "sharp resume" text.
+    *   Line [17:56 - 17:59] including a new telephoto lens for sharp resume
+    *   I will copy this exactly.
+
+    *   Let's double check the "iPhone land" text.
+    *   Line [15:41 - 15:44] iPhone land would be the most populated nation on earth
+    *   Line [15:45 - 15:45] by far.
+    *   Combined: "iPhone land would be the most populated nation on earth by far."
+
+    *   Okay, ready.
+</think>
+
+### Segment 1: The 3 Billion iPhone Trivia
+**Timestamps:** [15:21 - 15:45]
+**Duration:** 24 seconds
+**Text:**
+Trivia time. How many iPhones have been sold since 2007? A, 1.7 billion. B, 2.3 billion. Or C, over 3 billion. The answer? C, Apple has sold over 3 billion iPhones. If everyone who bought one formed a country, iPhone land would be the most populated nation on earth by far.
+
+**Virality Score:** 88/100
+*   **Hook Strength (22/25):** "Trivia time" immediately signals interaction. The multiple-choice format stops the scroll.
+*   **Engagement (23/25):** Viewers naturally guess along with the options (A, B, or C).
+*   **Value (20/25):** Provides a surprising, concrete statistic about Apple's market dominance.
+*   **Shareability (23/25):** The "iPhone land" analogy is highly shareable as a fun fact.
+
+---
+
+### Segment 2: iPhone 17 Standard Model Overview
+**Timestamps:** [16:08 - 17:01]
+**Duration:** 53 seconds
+**Text:**
+In September 2025, Apple unveiled the iPhone 17 series, headlined by the surprise debut of the iPhone Air. The standard iPhone 17 looks similar to the iPhone 16, but arrived with a larger 6.3-inch display thanks to thinner bezels. Now running pro-motion up to 120 Hertz for ultra-smooth scrolling and gaming, Apple introduced Ceramic Shield 2, claiming it is the toughest smartphone glass yet with three times better scratch resistance. The iPhone 17 also gained an 18-megapixel front camera that supports both vertical and horizontal selfies, plus a dual-fusion rear system, all powered by the new A19 chip. And at 256 gigabytes, it doubles the starting storage while keeping the same starting price.
+
+**Virality Score:** 75/100
+*   **Hook Strength (18/25):** Sets a future date (2025) which intrigues tech enthusiasts.
+*   **Engagement (17/25):** Dense with specs, appealing to those waiting for upgrades.
+*   **Value (25/25):** High information density regarding display, glass, camera, chip, and storage.
+*   **Shareability (15/25):** Useful for tech circles, less likely to be shared by general audiences compared to trivia.
+
+---
+
+### Segment 3: The iPhone Air Reveal
+**Timestamps:** [17:01 - 17:23]
+**Duration:** 22 seconds
+**Text:**
+But the real spotlight was on the iPhone Air. Apple called it the thinnest iPhone ever with the power of Pro inside. Despite its slim frame, it runs on the A19 Pro chip, but includes only a single 48-megapixel main camera. Nonetheless, it blends elegance with serious performance, starting at $999.
+
+**Virality Score:** 90/100
+*   **Hook Strength (24/25):** "iPhone Air" and "thinnest iPhone ever" are strong curiosity hooks.
+*   **Engagement (23/25):** Discusses design vs. performance trade-offs which sparks debate.
+*   **Value (20/25):** Clear info on chip, camera, and price point.
+*   **Shareability (23/25):** New product reveals are highly shareable news items.
+
+---
+
+### Segment 4: iPhone 17 Pro & Pro Max Upgrades
+**Timestamps:** [17:25 - 18:13]
+**Duration:** 48 seconds
+**Text:**
+For power users, the iPhone 17 Pro and Pro Max push things even further. Our fastest chip, our longest battery life, and our most cinematic camera, the Ultimate Pro. iPhone 17 Pro. Both use an all-new aluminum unibody for greater durability and feature new Ceramic Shield protection on both the front and back. They come with three powerful 48-megapixel cameras, including a new telephoto lens for sharp resume and deliver the best battery life ever on an iPhone, now paired with faster charging. The Pro now starts $100 higher at $1,099, while the Pro Max remains at $1,199.
+
+**Virality Score:** 78/100
+*   **Hook Strength (17/25):** Targets "power users," which is a specific but engaged niche.
+*   **Engagement (18/25):** Claims of "best battery life ever" generate interest.
+*   **Value (25/25):** Comprehensive breakdown of flagship specs and pricing.
+*   **Shareability (18/25):** High value for people planning to upgrade to Pro models.

@@ -73,13 +73,13 @@ class JobQueue:
 
     @classmethod
     async def enqueue_processing_job(
-        cls, function_name: str, processing_mode: str, *args, **kwargs
+        cls, function_name: str, task_params: dict, **kwargs
     ) -> str:
         # Keep a single queue for now; processing_mode remains available for future
         # dedicated queue routing once multiple worker pools are configured.
         queue_name = DEFAULT_QUEUE_NAME
         return await cls.enqueue_job(
-            function_name, *args, _queue_name=queue_name, **kwargs
+            function_name, task_params, _queue_name=queue_name, **kwargs
         )
 
     @classmethod

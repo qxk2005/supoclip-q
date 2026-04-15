@@ -15,41 +15,22 @@ logger = logging.getLogger(__name__)
 
 async def process_video_task(
     ctx: Dict[str, Any],
-    task_id: str,
-    url: str,
-    source_type: str,
-    user_id: str,
-    font_family: str = "TikTokSans-Regular",
-    font_size: int = 24,
-    font_color: str = "#FFFFFF",
-    caption_template: str = "default",
-    processing_mode: str = "fast",
-    output_format: str = "vertical",
-    add_subtitles: bool = True,
-    cleanup_settings: Dict[str, Any] | None = None,
+    task_params: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     Background worker task to process a video.
 
     Args:
         ctx: arq context (provides Redis connection and other utilities)
-        task_id: Task ID to update
-        url: Video URL or file path
-        source_type: "youtube" or "upload"
-        user_id: User ID who created the task
-        font_family: Font family for subtitles
-        font_size: Font size for subtitles
-        font_color: Font color for subtitles
-
-    Returns:
-        Dict with processing results
+        task_params: A dictionary containing all parameters for the task.
     """
     from ..database import AsyncSessionLocal
     from ..services.task_service import TaskService
     from ..workers.progress import ProgressTracker
 
+    task_id = task_params["task_id"]
     set_trace_id(f"task-{task_id}")
-    logger.info(f"Worker processing task {task_id}")
+    logger.info(f"Worker processing task {task_id} with params: {task_params}")
 
     # Create progress tracker
     progress = ProgressTracker(ctx["redis"], task_id)
@@ -77,20 +58,22 @@ async def process_video_task(
             # Process the video
             result = await task_service.process_task(
                 task_id=task_id,
-                url=url,
-                source_type=source_type,
-                font_family=font_family,
-                font_size=font_size,
-                font_color=font_color,
-                caption_template=caption_template,
-                processing_mode=processing_mode,
-                output_format=output_format,
-                add_subtitles=add_subtitles,
+                url=task_params["url"],
+                source_type=task_params["source_type"],
+                font_family=task_params.get("font_family", "TikTokSans-Regular"),
+                font_size=task_params.get("font_size", 24),
+                font_color=task_params.get("font_color", "#FFFFFF"),
+                caption_template=task_params.get("caption_template", "default"),
+                processing_mode=task_params.get("processing_mode", "fast"),
+                output_format=task_params.get("output_format", "vertical"),
+                add_subtitles=task_params.get("add_subtitles", True),
+                language=task_params.get("language", "auto"),
                 progress_callback=update_progress,
                 should_cancel=should_cancel,
                 clip_ready_callback=clip_ready_callback,
-                cleanup_settings=cleanup_settings,
+                cleanup_settings=task_params.get("cleanup_settings"),
             )
+
 
             logger.info(f"Task {task_id} completed successfully")
             return result

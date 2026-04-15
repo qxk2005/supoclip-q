@@ -10,16 +10,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const formData = await request.formData();
   const apiUrl =
     process.env.BACKEND_INTERNAL_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000";
   const normalizedApiUrl = apiUrl.replace(/\/$/, "");
+
+  // Stream the file directly from the client to the backend
+  // Do not process FormData here, as it can be corrupted by the edge runtime
   const upstream = await fetch(`${normalizedApiUrl}/upload`, {
     method: "POST",
-    headers: buildBackendAuthHeaders(session.user.id),
-    body: formData,
+    headers: {
+      ...buildBackendAuthHeaders(session.user.id),
+      "Content-Type": request.headers.get("Content-Type") || "multipart/form-data",
+    },
+    body: request.body,
+    duplex: 'half'
   });
 
   return new Response(upstream.body, {

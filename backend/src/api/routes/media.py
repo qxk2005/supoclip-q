@@ -224,19 +224,15 @@ async def get_broll_status():
 
 
 @router.post("/upload")
-async def upload_video(request: Request):
+async def upload_video(
+    request: Request,
+    video_file: UploadFile = File(..., alias="video"),
+):
     """Upload a video to the server."""
     try:
         _get_authenticated_user_id(request)
 
-        # Get the form data
-        form_data = await request.form()
-        video_file = cast(Any, form_data.get("video"))
-
-        if not getattr(video_file, "filename", None) or not hasattr(video_file, "read"):
-            raise HTTPException(status_code=400, detail="No video file provided")
-
-        upload = cast(UploadFile, video_file)
+        upload = video_file 
         upload_filename = upload.filename or "upload.mp4"
 
         # Create uploads directory
@@ -248,10 +244,10 @@ async def upload_video(request: Request):
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         video_path = uploads_dir / unique_filename
 
-        # Save the uploaded file
+        # Save the uploaded file by streaming it in chunks to avoid memory issues
         async with aiofiles.open(video_path, "wb") as f:
-            content = await upload.read()
-            await f.write(content)
+            while content := await upload.read(1024 * 1024):  # Read in 1MB chunks
+                await f.write(content)
 
         logger.info(f"✅ Video uploaded successfully to: {video_path}")
 

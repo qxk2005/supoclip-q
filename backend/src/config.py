@@ -9,6 +9,8 @@ _config_override = None
 class Config:
     def __init__(self):
         self.openai_api_key = self._get_optional_env("OPENAI_API_KEY")
+        self.openai_base_url = self._get_optional_env("OPENAI_BASE_URL")
+        self.openai_model = self._get_optional_env("OPENAI_MODEL")
         self.anthropic_api_key = self._get_optional_env("ANTHROPIC_API_KEY")
         self.google_api_key = self._get_optional_env("GOOGLE_API_KEY")
         self.youtube_data_api_key = self._get_optional_env("YOUTUBE_DATA_API_KEY")
@@ -125,10 +127,10 @@ class Config:
         Infer a usable default model based on whichever API key is present.
         Falls back to Google for backward compatibility.
         """
+        if self.openai_api_key:
+            return f"openai:{self.openai_model}"
         if self.google_api_key:
             return "google-gla:gemini-3-flash-preview"
-        if self.openai_api_key:
-            return "openai:gpt-5.2"
         if self.anthropic_api_key:
             return "anthropic:claude-4-sonnet"
         return "google-gla:gemini-3-flash-preview"

@@ -1,6 +1,6 @@
 """
 Utility functions for video-related operations.
-Optimized for MoviePy v2, AssemblyAI integration, and high-quality output.
+Optimized for MoviePy v2, and high-quality output.
 """
 
 from pathlib import Path
@@ -14,8 +14,7 @@ import json
 import cv2
 from moviepy import VideoFileClip, CompositeVideoClip, TextClip, ColorClip
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
-
-import assemblyai as aai
+from faster_whisper import WhisperModel
 import srt
 from datetime import timedelta
 
@@ -36,19 +35,28 @@ class VideoProcessor:
         font_family: str = "THEBOLDFONT",
         font_size: int = 24,
         font_color: str = "#FFFFFF",
+        text_for_font_detection: str = "",
     ):
         self.font_family = font_family
         self.font_size = font_size
         self.font_color = font_color
-        resolved_font = find_font_path(font_family, allow_all_user_fonts=True)
+
+        # Detect if text contains Chinese characters and override font
+        if text_for_font_detection and any('\u4e00' <= char <= '\u9fff' for char in text_for_font_detection):
+            logger.info("Chinese characters detected, switching to SourceHanSansSC-Regular font.")
+            self.font_family = "SourceHanSansSC-Regular.otf"
+
+        resolved_font = find_font_path(self.font_family, allow_all_user_fonts=True)
         if not resolved_font:
             resolved_font = find_font_path("TikTokSans-Regular")
         if not resolved_font:
             resolved_font = find_font_path("THEBOLDFONT")
         self.font_path = str(resolved_font) if resolved_font else ""
+        logger.info(f"VideoProcessor using font path: {self.font_path}")
 
     def get_optimal_encoding_settings(
-        self, target_quality: str = "high"
+        self,
+        target_quality: str = "high",
     ) -> Dict[str, Any]:
         """Get optimal encoding settings for different quality levels."""
         settings = {
@@ -82,173 +90,99 @@ class VideoProcessor:
         return settings.get(target_quality, settings["high"])
 
 
-def get_video_transcript(video_path: Path, speech_model: str = "best") -> str:
-    """Get transcript using AssemblyAI with word-level timing for precise subtitles."""
+def get_video_transcript(
+    video_path: Path, speech_model: str = "base"
+) -> Tuple[str, str]:
+    """
+    Get transcript using faster-whisper and return formatted text and language.
+    """
     logger.info(f"Getting transcript for: {video_path}")
 
-    # Configure AssemblyAI
-    aai.settings.api_key = config.assembly_ai_api_key
-    transcriber = aai.Transcriber()
-
-    # Request word-level timestamps for precise subtitle sync
-    speech_model_value = aai.SpeechModel.best
-    if speech_model == "nano":
-        speech_model_value = aai.SpeechModel.nano
-
-    config_obj = aai.TranscriptionConfig(
-        speaker_labels=True,
-        punctuate=True,
-        format_text=True,
-        speech_model=speech_model_value,
-    )
-
     try:
-        logger.info("Starting AssemblyAI transcription")
-        transcript = transcriber.transcribe(str(video_path), config=config_obj)
+        model = WhisperModel(speech_model, device="cpu", compute_type="int8")
+        segments, info = model.transcribe(str(video_path), word_timestamps=True)
 
-        if transcript.status == aai.TranscriptStatus.error:
-            logger.error(f"AssemblyAI transcription failed: {transcript.error}")
-            raise Exception(f"Transcription failed: {transcript.error}")
+        transcript_data = {
+            "segments": [],
+            "text": "",
+            "language": info.language,
+            "language_probability": info.language_probability,
+        }
+        full_text = []
 
-        formatted_lines = format_transcript_for_analysis(transcript)
+        for segment in segments:
+            segment_data = {
+                "id": segment.id,
+                "seek": segment.seek,
+                "start": segment.start,
+                "end": segment.end,
+                "text": segment.text,
+                "tokens": segment.tokens,
+                "temperature": segment.temperature,
+                "avg_logprob": segment.avg_logprob,
+                "compression_ratio": segment.compression_ratio,
+                "no_speech_prob": segment.no_speech_prob,
+                "words": [],
+            }
+            if hasattr(segment, "words"):
+                for word in segment.words:
+                    segment_data["words"].append(
+                        {
+                            "start": word.start,
+                            "end": word.end,
+                            "word": word.word,
+                            "probability": word.probability,
+                        }
+                    )
+            transcript_data["segments"].append(segment_data)
+            full_text.append(segment.text)
 
-        # Cache the raw transcript for subtitle generation
-        cache_transcript_data(video_path, transcript)
+        transcript_data["text"] = "".join(full_text)
+        cache_transcript_data(video_path, transcript_data)
+
+        # Format for analysis (similar to old format)
+        formatted_lines = []
+        for segment in transcript_data["segments"]:
+            start_time = format_s_to_timestamp(segment["start"])
+            end_time = format_s_to_timestamp(segment["end"])
+            formatted_lines.append(f"[{start_time} - {end_time}] {segment['text']}")
 
         result = "\n".join(formatted_lines)
         logger.info(
             f"Transcript formatted: {len(formatted_lines)} segments, {len(result)} chars"
         )
-        return result
+        return result, info.language
 
     except Exception as e:
         logger.error(f"Error in transcription: {e}")
         raise
 
+def format_s_to_timestamp(s: float) -> str:
+    """Format seconds to MM:SS format."""
+    minutes = int(s) // 60
+    seconds = int(s) % 60
+    return f"{minutes:02d}:{seconds:02d}"
 
-def cache_transcript_data(video_path: Path, transcript) -> None:
-    """Cache AssemblyAI transcript data for subtitle generation."""
+
+def cache_transcript_data(video_path: Path, transcript_data: Dict) -> None:
+    """Cache faster-whisper transcript data for subtitle generation."""
     cache_path = video_path.with_suffix(".transcript_cache.json")
-
-    words_data = []
-    if transcript.words:
-        words_data = [_serialize_transcript_word(word) for word in transcript.words]
-
-    utterances_data = []
-    if getattr(transcript, "utterances", None):
-        utterances_data = [
-            {
-                "text": utterance.text,
-                "start": utterance.start,
-                "end": utterance.end,
-                "speaker": getattr(utterance, "speaker", None),
-                "words": [
-                    _serialize_transcript_word(word)
-                    for word in getattr(utterance, "words", []) or []
-                ],
-            }
-            for utterance in transcript.utterances
-        ]
-
-    cache_data = {
-        "version": TRANSCRIPT_CACHE_SCHEMA_VERSION,
-        "words": words_data,
-        "utterances": utterances_data,
-        "text": transcript.text,
-    }
-
     with open(cache_path, "w") as f:
-        json.dump(cache_data, f)
-
-    logger.info(f"Cached {len(words_data)} words to {cache_path}")
+        json.dump(transcript_data, f)
+    logger.info(f"Cached transcript data to {cache_path}")
 
 
 def load_cached_transcript_data(video_path: Path) -> Optional[Dict]:
-    """Load cached AssemblyAI transcript data."""
+    """Load cached faster-whisper transcript data."""
     cache_path = video_path.with_suffix(".transcript_cache.json")
-
     if not cache_path.exists():
         return None
-
     try:
         with open(cache_path, "r") as f:
-            payload = json.load(f)
-            if "version" not in payload:
-                payload["version"] = TRANSCRIPT_CACHE_SCHEMA_VERSION
-                payload.setdefault("utterances", [])
-            return payload
+            return json.load(f)
     except Exception as e:
         logger.warning(f"Failed to load transcript cache: {e}")
         return None
-
-
-def _serialize_transcript_word(word) -> Dict[str, Any]:
-    return {
-        "text": word.text,
-        "start": word.start,
-        "end": word.end,
-        "confidence": word.confidence if hasattr(word, "confidence") else 1.0,
-        "speaker": getattr(word, "speaker", None),
-    }
-
-
-def format_transcript_for_analysis(transcript) -> List[str]:
-    """Format transcripts into readable timestamped segments for AI analysis."""
-    utterances = getattr(transcript, "utterances", None) or []
-    if utterances:
-        formatted_lines = []
-        for utterance in utterances:
-            start_time = format_ms_to_timestamp(utterance.start)
-            end_time = format_ms_to_timestamp(utterance.end)
-            speaker = getattr(utterance, "speaker", None)
-            speaker_prefix = f"Speaker {speaker}: " if speaker else ""
-            formatted_lines.append(
-                f"[{start_time} - {end_time}] {speaker_prefix}{utterance.text}"
-            )
-        return formatted_lines
-
-    formatted_lines = []
-    words = getattr(transcript, "words", None) or []
-    if not words:
-        return formatted_lines
-
-    logger.info(f"Processing {len(words)} words with precise timing")
-
-    current_segment = []
-    current_start = None
-    segment_word_count = 0
-    max_words_per_segment = 8
-
-    for word in words:
-        if current_start is None:
-            current_start = word.start
-
-        current_segment.append(word.text)
-        segment_word_count += 1
-
-        if (
-            segment_word_count >= max_words_per_segment
-            or word.text.endswith(".")
-            or word.text.endswith("!")
-            or word.text.endswith("?")
-        ):
-            if current_segment:
-                start_time = format_ms_to_timestamp(current_start)
-                end_time = format_ms_to_timestamp(word.end)
-                text = " ".join(current_segment)
-                formatted_lines.append(f"[{start_time} - {end_time}] {text}")
-
-            current_segment = []
-            current_start = None
-            segment_word_count = 0
-
-    if current_segment and current_start is not None:
-        start_time = format_ms_to_timestamp(current_start)
-        end_time = format_ms_to_timestamp(words[-1].end)
-        text = " ".join(current_segment)
-        formatted_lines.append(f"[{start_time} - {end_time}] {text}")
-
-    return formatted_lines
 
 
 def format_ms_to_timestamp(ms: int) -> str:
@@ -269,24 +203,32 @@ def get_scaled_font_size(base_font_size: int, video_width: int) -> int:
     scaled_size = int(base_font_size * (video_width / 720))
     return max(24, min(64, scaled_size))
 
-
 def get_subtitle_max_width(video_width: int) -> int:
     """Return max subtitle text width with horizontal safe margins."""
     horizontal_padding = max(40, int(video_width * 0.06))
     return max(200, video_width - (horizontal_padding * 2))
 
-
 def get_safe_vertical_position(
-    video_height: int, text_height: int, position_y: float
+    video_height: int,
+    text_height: int,
+    position_y: float,
 ) -> int:
     """Return subtitle y position clamped inside a top/bottom safe area."""
     min_top_padding = max(40, int(video_height * 0.05))
     min_bottom_padding = max(120, int(video_height * 0.10))
 
-    desired_y = int(video_height * position_y - text_height // 2)
-    max_y = video_height - min_bottom_padding - text_height
-    return max(min_top_padding, min(desired_y, max_y))
+    # position_y now represents the anchor point (e.g., 0.8 means 80% from the top)
+    # The final position will be the top of the text clip
+    desired_y = int(video_height * position_y)
 
+    # Ensure the entire text clip is within the safe area
+    # Adjust so the bottom of the text clip does not go into the padding
+    max_y = video_height - min_bottom_padding - text_height
+    
+    # The final y is the top of the text clip, so we clamp it between top padding and max_y
+    final_y = max(min_top_padding, min(desired_y, max_y))
+    
+    return final_y
 
 def detect_optimal_crop_region(
     video_clip: VideoFileClip,
@@ -338,7 +280,8 @@ def detect_optimal_crop_region(
                 y_offset = max(
                     0,
                     min(
-                        int(weighted_y - new_height // 2), original_height - new_height
+                        int(weighted_y - new_height // 2),
+                        original_height - new_height,
                     ),
                 )
 
@@ -402,9 +345,10 @@ def detect_optimal_crop_region(
 
         return (x_offset, y_offset, new_width, new_height)
 
-
 def detect_faces_in_clip(
-    video_clip: VideoFileClip, start_time: float, end_time: float
+    video_clip: VideoFileClip,
+    start_time: float,
+    end_time: float,
 ) -> List[Tuple[int, int, int, float]]:
     """
     Improved face detection using multiple methods and temporal consistency.
@@ -598,7 +542,6 @@ def detect_faces_in_clip(
         logger.error(f"Error in face detection: {e}")
         return []
 
-
 def filter_face_outliers(
     face_centers: List[Tuple[int, int, int, float]],
 ) -> List[Tuple[int, int, int, float]]:
@@ -636,7 +579,6 @@ def filter_face_outliers(
         logger.warning(f"Error filtering face outliers: {e}")
         return face_centers
 
-
 def parse_timestamp_to_seconds(timestamp_str: str) -> float:
     """Parse timestamp string to seconds."""
     try:
@@ -665,43 +607,35 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
         return 0.0
 
-
 def get_words_in_range(
-    transcript_data: Dict, clip_start: float, clip_end: float
+    transcript_data: Dict,
+    clip_start: float,
+    clip_end: float,
 ) -> List[Dict]:
     """Extract words that fall within a clip timerange."""
-    if not transcript_data or not transcript_data.get("words"):
+    if not transcript_data or not transcript_data.get("segments"):
         return []
 
-    clip_start_ms = int(clip_start * 1000)
-    clip_end_ms = int(clip_end * 1000)
-
     relevant_words = []
-    for word_data in transcript_data["words"]:
-        word_start = word_data["start"]
-        word_end = word_data["end"]
+    for segment in transcript_data["segments"]:
+        for word_data in segment.get("words", []):
+            word_start = word_data["start"]
+            word_end = word_data["end"]
 
-        if word_start < clip_end_ms and word_end > clip_start_ms:
-            relative_start = max(0, (word_start - clip_start_ms) / 1000.0)
-            relative_end = min(
-                (clip_end_ms - clip_start_ms) / 1000.0,
-                (word_end - clip_start_ms) / 1000.0,
-            )
+            if word_start < clip_end and word_end > clip_start:
+                relative_start = max(0, word_start - clip_start)
+                relative_end = min(clip_end - clip_start, word_end - clip_start)
 
-            if relative_end > relative_start:
-                relevant_words.append(
-                    {
-                        "text": word_data["text"],
+                if relative_end > relative_start:
+                    relevant_words.append({
+                        "text": word_data["word"],
                         "start": relative_start,
                         "end": relative_end,
-                        "confidence": word_data.get("confidence", 1.0),
-                    }
-                )
-
+                        "confidence": word_data.get("probability", 1.0),
+                    })
     return relevant_words
 
-
-def create_assemblyai_subtitles(
+def create_faster_whisper_subtitles(
     video_path: Path,
     clip_start: float,
     clip_end: float,
@@ -712,10 +646,10 @@ def create_assemblyai_subtitles(
     font_color: str = "#FFFFFF",
     caption_template: str = "default",
 ) -> List[TextClip]:
-    """Create subtitles using AssemblyAI's precise word timing with template support."""
+    """Create subtitles using faster-whisper's precise word timing with template support."""
     transcript_data = load_cached_transcript_data(video_path)
 
-    if not transcript_data or not transcript_data.get("words"):
+    if not transcript_data or not transcript_data.get("segments"):
         logger.warning("No cached transcript data available for subtitles")
         return []
 
@@ -736,6 +670,7 @@ def create_assemblyai_subtitles(
     logger.info(
         f"Creating subtitles with template '{caption_template}', animation: {animation_type}"
     )
+    logger.info(f"Effective font: {effective_font_family}, size: {effective_font_size}, color: {effective_font_color}")
 
     # Get words in range
     relevant_words = get_words_in_range(transcript_data, clip_start, clip_end)
@@ -743,6 +678,29 @@ def create_assemblyai_subtitles(
     if not relevant_words:
         logger.warning("No words found in clip timerange")
         return []
+    logger.info(f"Found {len(relevant_words)} relevant words for subtitles.")
+
+    # If bilingual mode is selected, create two sets of subtitles
+    if caption_template == "bilingual":
+        # Chinese (main) subtitles - larger, on top
+        chinese_template = template.copy()
+        chinese_template["position_y"] = 0.4  # Position higher
+        chinese_template["font_size"] = int(effective_font_size * 1.2) # Larger font
+        
+        chinese_subtitles = create_static_subtitles(
+            relevant_words, video_width, video_height, chinese_template, "SourceHanSansSC-Regular.otf"
+        )
+        
+        # English (secondary) subtitles - smaller, at bottom
+        english_template = template.copy()
+        english_template["position_y"] = 0.8 # Standard bottom position
+        english_template["font_size"] = int(effective_font_size * 0.8) # Smaller font
+
+        english_subtitles = create_static_subtitles(
+            relevant_words, video_width, video_height, english_template, font_family
+        )
+        
+        return chinese_subtitles + english_subtitles
 
     # Choose subtitle creation method based on animation type
     if animation_type == "karaoke":
@@ -779,7 +737,6 @@ def create_assemblyai_subtitles(
             effective_font_family,
         )
 
-
 def create_static_subtitles(
     relevant_words: List[Dict],
     video_width: int,
@@ -789,13 +746,19 @@ def create_static_subtitles(
 ) -> List[TextClip]:
     """Create standard static subtitles (original behavior)."""
     subtitle_clips = []
+    
+    # Pass the full text to the processor for font detection
+    full_text_for_detection = " ".join(w["text"] for w in relevant_words)
     processor = VideoProcessor(
-        font_family, template["font_size"], template["font_color"]
+        font_family, template["font_size"], template["font_color"],
+        text_for_font_detection=full_text_for_detection
     )
+    logger.info(f"Static subtitles - processor font path: {processor.font_path}")
 
     calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
     position_y = template.get("position_y", 0.75)
     max_text_width = get_subtitle_max_width(video_width)
+    logger.info(f"Static subtitles - calculated_font_size: {calculated_font_size}, position_y: {position_y}, max_text_width: {max_text_width}")
 
     words_per_subtitle = 3
     for i in range(0, len(relevant_words), words_per_subtitle):
@@ -823,20 +786,20 @@ def create_static_subtitles(
                     font_size=calculated_font_size,
                     color=template["font_color"],
                     stroke_color=stroke_color if stroke_color else None,
-                    stroke_width=stroke_width if stroke_color else 0,
-                    method="caption",
                     size=(max_text_width, None),
-                    text_align="center",
+                    align="South",  # Anchor to the bottom of the text
                     interline=6,
                 )
                 .with_duration(segment_duration)
                 .with_start(segment_start)
             )
+            logger.info(f"Static subtitles - TextClip created: text='{text}' size={text_clip.size} start={segment_start} end={segment_end}")
 
             text_height = text_clip.size[1] if text_clip.size else 40
             vertical_position = get_safe_vertical_position(
                 video_height, text_height, position_y
             )
+            logger.info(f"Static subtitles - text_height: {text_height}, vertical_position: {vertical_position}")
             text_clip = text_clip.with_position(("center", vertical_position))
 
             subtitle_clips.append(text_clip)
@@ -848,7 +811,6 @@ def create_static_subtitles(
     logger.info(f"Created {len(subtitle_clips)} static subtitle elements")
     return subtitle_clips
 
-
 def create_karaoke_subtitles(
     relevant_words: List[Dict],
     video_width: int,
@@ -856,10 +818,13 @@ def create_karaoke_subtitles(
     template: Dict,
     font_family: str,
 ) -> List[TextClip]:
-    """Create karaoke-style subtitles with word-by-word highlighting."""
     subtitle_clips = []
+    
+    # Pass the full text to the processor for font detection
+    full_text_for_detection = " ".join(w["text"] for w in relevant_words)
     processor = VideoProcessor(
-        font_family, template["font_size"], template["font_color"]
+        font_family, template["font_size"], template["font_color"],
+        text_for_font_detection=full_text_for_detection
     )
 
     calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
@@ -973,6 +938,83 @@ def create_karaoke_subtitles(
     logger.info(f"Created {len(subtitle_clips)} karaoke subtitle elements")
     return subtitle_clips
 
+def create_pop_subtitles(
+    relevant_words: List[Dict],
+    video_width: int,
+    video_height: int,
+    template: Dict,
+    font_family: str,
+) -> List[TextClip]:
+    subtitle_clips = []
+
+    # Pass the full text to the processor for font detection
+    full_text_for_detection = " ".join(w["text"] for w in relevant_words)
+    processor = VideoProcessor(
+        font_family, template["font_size"], template["font_color"],
+        text_for_font_detection=full_text_for_detection
+    )
+    logger.info(f"Pop subtitles - processor font path: {processor.font_path}")
+
+    calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
+    position_y = template.get("position_y", 0.75)
+    max_text_width = get_subtitle_max_width(video_width)
+    logger.info(f"Pop subtitles - calculated_font_size: {calculated_font_size}, position_y: {position_y}, max_text_width: {max_text_width}")
+
+    words_per_group = 3
+
+    for group_idx in range(0, len(relevant_words), words_per_group):
+        word_group = relevant_words[group_idx : group_idx + words_per_group]
+        if not word_group:
+            continue
+
+        # Show the full group text
+        group_text = " ".join(w["text"] for w in word_group)
+        group_start = word_group[0]["start"]
+        group_end = word_group[0]["end"] # Changed to word_group[0]["end"]
+        group_duration = group_end - group_start
+
+        if group_duration < 0.1:
+            continue
+
+        try:
+            stroke_color = template.get("stroke_color", "black")
+            stroke_width = template.get("stroke_width", 2)
+
+            logger.info(f"Pop subtitles - Attempting TextClip creation: text='{group_text}', font='{processor.font_path}', size={calculated_font_size}, color='{template['font_color']}', stroke_color='{stroke_color}', stroke_width={stroke_width}")
+            
+            text_clip = (
+                TextClip(
+                    text=group_text,
+                    font=processor.font_path,
+                    font_size=calculated_font_size,
+                    color=template["font_color"],
+                    stroke_color=stroke_color if stroke_color else None,
+                    stroke_width=stroke_width,
+                    method="caption",
+                    size=(max_text_width, None),
+                    text_align="center",
+                    interline=6,
+                )
+                .with_duration(group_duration)
+                .with_start(group_start)
+            )
+            logger.info(f"Pop subtitles - TextClip created: text='{group_text}' size={text_clip.size} start={group_start} end={group_end}")
+
+            text_height = text_clip.size[1] if text_clip.size else 40
+            vertical_position = get_safe_vertical_position(
+                video_height, text_height, position_y
+            )
+            logger.info(f"Pop subtitles - text_height: {text_height}, vertical_position: {vertical_position}")
+            text_clip = text_clip.with_position(("center", vertical_position))
+
+            subtitle_clips.append(text_clip)
+
+        except Exception as e:
+            logger.error(f"Failed to create pop subtitle for text '{group_text}': {e}", exc_info=True)
+            continue
+
+    logger.info(f"Created {len(subtitle_clips)} pop subtitle elements")
+    return subtitle_clips
 
 def create_pop_subtitles(
     relevant_words: List[Dict],
@@ -981,10 +1023,13 @@ def create_pop_subtitles(
     template: Dict,
     font_family: str,
 ) -> List[TextClip]:
-    """Create pop-style subtitles where each word pops in."""
     subtitle_clips = []
+
+    # Pass the full text to the processor for font detection
+    full_text_for_detection = " ".join(w["text"] for w in relevant_words)
     processor = VideoProcessor(
-        font_family, template["font_size"], template["font_color"]
+        font_family, template["font_size"], template["font_color"],
+        text_for_font_detection=full_text_for_detection
     )
 
     calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
@@ -1008,6 +1053,11 @@ def create_pop_subtitles(
             continue
 
         try:
+            stroke_color = template.get("stroke_color", "black")
+            stroke_width = template.get("stroke_width", 2)
+            
+            logger.debug(f"Pop subtitles - Attempting TextClip creation: text='{group_text}', font='{processor.font_path}', size={calculated_font_size}, color='{template['font_color']}', stroke_color='{stroke_color}', stroke_width={stroke_width}")
+
             # Create main text clip
             text_clip = (
                 TextClip(
@@ -1015,8 +1065,8 @@ def create_pop_subtitles(
                     font=processor.font_path,
                     font_size=calculated_font_size,
                     color=template["font_color"],
-                    stroke_color=template.get("stroke_color", "black"),
-                    stroke_width=template.get("stroke_width", 2),
+                    stroke_color=stroke_color,
+                    stroke_width=stroke_width,
                     method="caption",
                     size=(max_text_width, None),
                     text_align="center",
@@ -1025,22 +1075,23 @@ def create_pop_subtitles(
                 .with_duration(group_duration)
                 .with_start(group_start)
             )
+            logger.debug(f"Pop subtitles - TextClip created: size={text_clip.size}")
 
             text_height = text_clip.size[1] if text_clip.size else 40
             vertical_position = get_safe_vertical_position(
                 video_height, text_height, position_y
             )
+            logger.debug(f"Pop subtitles - text_height: {text_height}, vertical_position: {vertical_position}")
             text_clip = text_clip.with_position(("center", vertical_position))
 
             subtitle_clips.append(text_clip)
 
         except Exception as e:
-            logger.warning(f"Failed to create pop subtitle: {e}")
+            logger.error(f"Failed to create pop subtitle for text '{group_text}': {e}", exc_info=True)
             continue
 
     logger.info(f"Created {len(subtitle_clips)} pop subtitle elements")
     return subtitle_clips
-
 
 def create_fade_subtitles(
     relevant_words: List[Dict],
@@ -1051,8 +1102,12 @@ def create_fade_subtitles(
 ) -> List[TextClip]:
     """Create fade-style subtitles with smooth transitions."""
     subtitle_clips = []
+
+    # Pass the full text to the processor for font detection
+    full_text_for_detection = " ".join(w["text"] for w in relevant_words)
     processor = VideoProcessor(
-        font_family, template["font_size"], template["font_color"]
+        font_family, template["font_size"], template["font_color"],
+        text_for_font_detection=full_text_for_detection
     )
 
     calculated_font_size = get_scaled_font_size(template["font_size"], video_width)
@@ -1149,7 +1204,6 @@ def create_fade_subtitles(
     logger.info(f"Created {len(subtitle_clips)} fade subtitle elements")
     return subtitle_clips
 
-
 def create_optimized_clip(
     video_path: Path,
     start_time: float,
@@ -1161,8 +1215,11 @@ def create_optimized_clip(
     font_color: str = "#FFFFFF",
     caption_template: str = "default",
     output_format: str = "vertical",
+    audio_fade_in: bool = False,
+    audio_fade_out: bool = False,
+    processing_mode: str = "fast",
 ) -> bool:
-    """Create clip with optional subtitles. output_format: 'vertical' (9:16) or 'original' (keep source size)."""
+    """Create clip with optional subtitles and audio fades."""
     try:
         duration = end_time - start_time
         if duration <= 0:
@@ -1175,8 +1232,8 @@ def create_optimized_clip(
             f"subtitles={add_subtitles} template '{caption_template}' format={'original' if keep_original else 'vertical'}"
         )
 
-        # Fast path: no subtitles + original = ffmpeg stream copy (no re-encoding)
-        if not add_subtitles and keep_original:
+        # Fast path: no subtitles, no fades, original format = ffmpeg stream copy
+        if not add_subtitles and keep_original and not audio_fade_in and not audio_fade_out:
             import subprocess
             result = subprocess.run(
                 [
@@ -1202,15 +1259,16 @@ def create_optimized_clip(
         # Load and process video
         video = VideoFileClip(str(video_path))
 
-        if start_time >= video.duration:
-            logger.error(
-                f"Start time {start_time}s exceeds video duration {video.duration:.1f}s"
-            )
-            video.close()
-            return False
-
-        end_time = min(end_time, video.duration)
+        # Add a small safety margin to the end time to avoid cutting off audio
+        end_time = min(end_time + 0.5, video.duration)
         clip = video.subclipped(start_time, end_time)
+
+        # Apply audio fades if requested
+        if clip.audio:
+            if audio_fade_in:
+                clip.audio = clip.audio.audio_fadein(min(1.0, duration * 0.2))
+            if audio_fade_out:
+                clip.audio = clip.audio.audio_fadeout(min(1.0, duration * 0.2))
 
         if keep_original:
             # No face detection, no crop, no resize - use trimmed clip as-is
@@ -1231,11 +1289,12 @@ def create_optimized_clip(
             target_width, target_height = round_to_even(new_width), round_to_even(new_height)
             processed_clip = cropped_clip
 
-        # Add AssemblyAI subtitles with template support
+        # Add faster-whisper subtitles with template support
         final_clips = [processed_clip]
 
         if add_subtitles:
-            subtitle_clips = create_assemblyai_subtitles(
+            logger.info(f"Creating subtitles for clip with template: {caption_template}")
+            subtitle_clips = create_faster_whisper_subtitles(
                 video_path,
                 start_time,
                 end_time,
@@ -1246,7 +1305,10 @@ def create_optimized_clip(
                 font_color,
                 caption_template,
             )
+            logger.info(f"Found {len(subtitle_clips)} subtitle clips to add.")
             final_clips.extend(subtitle_clips)
+        else:
+            logger.info("Skipping subtitle creation because add_subtitles is False.")
 
         # Compose and encode
         final_clip = (
@@ -1282,7 +1344,6 @@ def create_optimized_clip(
     except Exception as e:
         logger.error(f"Failed to create clip: {e}")
         return False
-
 
 def create_clips_from_segments(
     video_path: Path,
@@ -1370,7 +1431,6 @@ def create_clips_from_segments(
     logger.info(f"Successfully created {len(clips_info)}/{len(segments)} clips")
     return clips_info
 
-
 def get_available_transitions() -> List[str]:
     """Get list of available transition video files."""
     transitions_dir = Path(__file__).parent.parent / "transitions"
@@ -1385,9 +1445,11 @@ def get_available_transitions() -> List[str]:
     logger.info(f"Found {len(transition_files)} transition files")
     return transition_files
 
-
 def apply_transition_effect(
-    clip1_path: Path, clip2_path: Path, transition_path: Path, output_path: Path
+    clip1_path: Path,
+    clip2_path: Path,
+    transition_path: Path,
+    output_path: Path,
 ) -> bool:
     """Apply transition effect between two clips using a transition video."""
     clip1 = None
@@ -1482,7 +1544,6 @@ def apply_transition_effect(
                 except Exception:
                     pass
 
-
 def create_clips_with_transitions(
     video_path: Path,
     segments: List[Dict[str, Any]],
@@ -1521,7 +1582,6 @@ def create_clips_with_transitions(
 def get_video_transcript_with_assemblyai(path: Path) -> str:
     """Backward compatibility wrapper."""
     return get_video_transcript(path)
-
 
 def create_9_16_clip(
     video_path: Path,
@@ -1649,9 +1709,10 @@ def insert_broll_into_clip(
         logger.error(f"Error inserting B-roll: {e}")
         return False
 
-
 def resize_for_916(
-    clip: VideoFileClip, target_width: int, target_height: int
+    clip: VideoFileClip,
+    target_width: int,
+    target_height: int,
 ) -> VideoFileClip:
     """
     Resize a video clip to fit 9:16 aspect ratio with center crop.
@@ -1691,9 +1752,10 @@ def resize_for_916(
 
     return cropped
 
-
 def apply_broll_to_clip(
-    clip_path: Path, broll_suggestions: List[Dict[str, Any]], output_path: Path
+    clip_path: Path,
+    broll_suggestions: List[Dict[str, Any]],
+    output_path: Path,
 ) -> bool:
     """
     Apply multiple B-roll insertions to a clip.
@@ -1736,7 +1798,11 @@ def apply_broll_to_clip(
                 temp_output = output_path
 
             success = insert_broll_into_clip(
-                current_clip_path, Path(broll_path), timestamp, duration, temp_output
+                current_clip_path,
+                Path(broll_path),
+                timestamp,
+                duration,
+                temp_output,
             )
 
             if success:

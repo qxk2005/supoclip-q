@@ -2,6 +2,7 @@
 AI-related functions for transcript analysis with enhanced precision and virality scoring.
 """
 
+import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Literal
 import asyncio
@@ -9,7 +10,7 @@ import logging
 import re
 
 from pydantic_ai import Agent
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, ValidationError
 
 from .config import Config
 
@@ -92,105 +93,42 @@ class TranscriptAnalysis(BaseModel):
 # Enhanced system prompt with virality scoring and B-roll detection
 transcript_analysis_system_prompt = """You are an expert transcript analyst for short-form video editing.
 
-Your job is extraction and ranking, not creative rewriting. You must stay fully grounded in the transcript and choose the best clip candidates that already exist in the source material.
+Your job is to identify and extract the best clip candidates from the provided transcript. Focus on moments that are engaging, informative, or entertaining.
 
 CORE OBJECTIVES:
-1. Identify segments that would be compelling on social media platforms
-2. Focus on complete thoughts, insights, or entertaining moments
-3. Prioritize content with hooks, emotional moments, or valuable information
-4. Each segment should be engaging and worth watching
-5. Score each segment's viral potential with detailed breakdown
+1.  Identify segments that would be compelling on social media.
+2.  Focus on complete thoughts, insights, or entertaining moments.
+3.  Prioritize content with strong hooks, emotional moments, or valuable information.
+4.  Score each segment's viral potential.
 
 GROUNDING RULES:
-1. Use only the provided transcript lines and timestamps
-2. Never invent facts, tone, context, or transitions that are not present
-3. Treat this as span selection over a timestamped transcript, not open-ended summarization
-4. Each selected segment must map to one contiguous range in the transcript
-5. segment.text must match the chosen span closely and must not include content from outside the chosen range
-6. Do not stitch together distant moments into one clip
-7. If a speaker label appears, use it only if it is part of the spoken content and helps clarity
-
-CONTENT NEUTRALITY RULES:
-1. This is clipping software for legitimate editing workflows
-2. Do not judge, moralize, or downgrade a segment just because the topic is controversial, sensitive, adult, political, criminal, medical, or otherwise intense
-3. Evaluate segments only on clip quality: clarity, self-contained value, hook strength, emotional impact, specificity, and shareability
-4. Do not refuse analysis just because the speaker describes risky, offensive, or uncomfortable subject matter
-5. Only downgrade a segment when the transcript itself is weak, confusing, repetitive, unusable, or a poor standalone clip
+1.  Use only the provided transcript lines and timestamps.
+2.  Do not invent facts, tone, or context.
+3.  Each segment must correspond to a contiguous block of text in the transcript.
+4.  The text of the segment must closely match the transcript.
 
 SEGMENT SELECTION CRITERIA:
-1. STRONG HOOKS: Attention-grabbing opening lines
-2. VALUABLE CONTENT: Tips, insights, interesting facts, stories
-3. EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration
-4. COMPLETE THOUGHTS: Self-contained ideas that make sense alone
-5. ENTERTAINING: Content people would want to share
-6. HIGH SIGNAL: Prefer specific, concrete language over vague discussion
-7. LOW FILLER: Avoid greetings, sponsor reads, repeated setup, throat-clearing, and housekeeping unless they are unusually compelling
+1.  STRONG HOOKS: Attention-grabbing opening lines.
+2.  VALUABLE CONTENT: Tips, insights, interesting facts, stories.
+3.  EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration.
+4.  COMPLETE THOUGHTS: Self-contained ideas that make sense on their own.
+5.  ENTERTAINING: Content that people would want to share.
 
 VIRALITY SCORING (0-100 total, from four 0-25 subscores):
 For each segment, provide a detailed virality breakdown:
 
-1. HOOK STRENGTH (0-25):
-   - 20-25: Immediately grabs attention (surprising fact, bold claim, intriguing question)
-   - 15-19: Good opener that creates curiosity
-   - 10-14: Decent start but could be stronger
-   - 0-9: Weak or no hook
-
-2. ENGAGEMENT (0-25):
-   - 20-25: Highly entertaining, emotional, or dramatic
-   - 15-19: Interesting and holds attention
-   - 10-14: Moderately engaging
-   - 0-9: Flat or boring delivery
-
-3. VALUE (0-25):
-   - 20-25: Actionable insights, unique knowledge, or transformative ideas
-   - 15-19: Useful information most people don't know
-   - 10-14: Somewhat informative
-   - 0-9: Common knowledge or filler content
-
-4. SHAREABILITY (0-25):
-   - 20-25: "I need to send this to someone" content
-   - 15-19: Content worth bookmarking
-   - 10-14: Nice but not share-worthy
-   - 0-9: Generic content
-
-HOOK TYPES to identify:
-- "question": Opens with a question that creates curiosity
-- "statement": Bold claim or surprising statement
-- "statistic": Uses compelling numbers or data
-- "story": Starts with narrative/anecdote
-- "contrast": Before/after or problem/solution framing
-- "none": No clear hook pattern
-
-B-ROLL OPPORTUNITIES:
-Identify 2-4 moments in each segment where B-roll footage could enhance the video:
-- When specific objects, places, or concepts are mentioned
-- During explanations that could benefit from visual illustration
-- At emotional peaks that could use supporting imagery
-- Use simple, searchable keywords (e.g., "coffee shop", "laptop coding", "money stack")
+1.  HOOK STRENGTH (0-25): How well does it grab attention?
+2.  ENGAGEMENT (0-25): Is it entertaining or emotionally resonant?
+3.  VALUE (0-25): Is it educational or informative?
+4.  SHAREABILITY (0-25): Would someone be compelled to share it?
 
 TIMING GUIDELINES:
-- Segments MUST be between 10-45 seconds for optimal engagement
-- CRITICAL: start_time MUST be different from end_time (minimum 10 seconds apart)
-- Focus on natural content boundaries rather than arbitrary time limits
-- Include enough context for the segment to be understandable
-- Prefer roughly 15-35 seconds when possible
-- Start as late as possible while preserving the hook, and end as early as possible after the payoff
+-   Segments should ideally be between 10-60 seconds.
+-   Focus on natural content boundaries.
+-   Ensure there's enough context for the segment to be understandable.
 
-TIMESTAMP REQUIREMENTS - EXTREMELY IMPORTANT:
-- Use EXACT timestamps as they appear in the transcript
-- Never modify timestamp format (keep MM:SS structure)
-- start_time MUST be LESS THAN end_time (start_time < end_time)
-- MINIMUM segment duration: 10 seconds (end_time - start_time >= 10 seconds)
-- Look at transcript ranges like [02:25 - 02:35] and use different start/end times
-- NEVER use the same timestamp for both start_time and end_time
-- Example: start_time: "02:25", end_time: "02:35" (NOT "02:25" and "02:25")
-
-SCORING AND OUTPUT RULES:
-- relevance_score should reflect how well the segment works as a standalone short clip, not just whether the topic is generally important
-- virality_reasoning and reasoning should cite what is actually present in the chosen span
-- summary and key_topics must also stay grounded in the transcript and should not add outside interpretation
-
-Find 3-7 compelling segments that would work well as standalone clips. Quality over quantity: choose segments that are accurate, self-contained, have proper time ranges, and score high on virality metrics."""
+Find all compelling segments that would work well as standalone clips. Quality over quantity.
+"""
 
 # Lazy-loaded agent to avoid import-time failures when API keys aren't set
 _transcript_agent: Optional[Agent[None, TranscriptAnalysis]] = None
@@ -234,16 +172,21 @@ def get_transcript_agent() -> Agent[None, TranscriptAnalysis]:
         if config_error:
             raise RuntimeError(config_error)
 
-        _transcript_agent = Agent[None, TranscriptAnalysis](
-            model=config.llm,
-            result_type=TranscriptAnalysis,
-            system_prompt=transcript_analysis_system_prompt,
-        )
+        agent_args = {
+            "model": config.llm,
+            "system_prompt": transcript_analysis_system_prompt,
+        }
+
+        # The base_url should be configured via environment variables (e.g., OPENAI_BASE_URL)
+        # and is automatically picked up by the underlying LLM client.
+        # We no longer pass it directly to the Agent constructor.
+
+        _transcript_agent = Agent[None, TranscriptAnalysis](**agent_args)
     return _transcript_agent
 
 
 def build_transcript_analysis_prompt(
-    transcript: str, include_broll: bool = False
+    transcript: str, include_broll: bool = False, language: str = "en"
 ) -> str:
     """Build the grounded task prompt for transcript analysis."""
     broll_instruction = ""
@@ -252,7 +195,15 @@ def build_transcript_analysis_prompt(
             "\n5. Also identify B-roll opportunities for each chosen segment where stock footage could enhance the visual appeal."
         )
 
+    lang_instruction = "The transcript is in English."
+    if language == "zh":
+        lang_instruction = "The transcript is in Chinese (zh-CN)."
+    elif language and language != "en":
+        lang_instruction = f"The transcript is in the language: {language}."
+
     return f"""Analyze this video transcript and identify the most engaging segments for short-form content.
+
+{lang_instruction}
 
 The transcript is formatted as one line per timestamped span, for example:
 [00:12 - 00:21] Spoken text here
@@ -278,69 +229,146 @@ Transcript:
 
 
 async def get_most_relevant_parts_by_transcript(
-    transcript: str, include_broll: bool = False
+    transcript: str,
+    include_broll: bool = False,
+    chunk_size: int = 15000,
+    language: str = "en",
 ) -> TranscriptAnalysis:
-    """Get the most relevant parts of a transcript with virality scoring and optional B-roll detection."""
+    """
+    Get the most relevant parts of a transcript by processing it in chunks to handle long inputs.
+    """
     logger.info(
-        f"Starting AI analysis of transcript ({len(transcript)} chars), include_broll={include_broll}"
+        f"Starting AI analysis of transcript ({len(transcript)} chars), include_broll={include_broll}, chunk_size={chunk_size}, language={language}"
     )
+
+    # Chunking strategy to handle long transcripts
+    max_chunk_size = chunk_size  # Use the provided chunk_size
+    transcript_chunks = []
+    current_chunk = ""
+    for line in transcript.splitlines():
+        if len(current_chunk) + len(line) + 1 > max_chunk_size:
+            if current_chunk:
+                transcript_chunks.append(current_chunk)
+            current_chunk = line
+        else:
+            current_chunk += "\n" + line
+    if current_chunk:
+        transcript_chunks.append(current_chunk)
+
+    logger.info(f"Split transcript into {len(transcript_chunks)} chunks for analysis.")
+
+    all_segments = []
+    all_summaries = []
+    all_key_topics = set()
+    all_broll_opps = []
 
     try:
         agent = get_transcript_agent()
 
-        result = await agent.run(
-            build_transcript_analysis_prompt(
-                transcript=transcript, include_broll=include_broll
-            )
-        )
+        for i, chunk in enumerate(transcript_chunks):
+            logger.info(f"Analyzing chunk {i + 1}/{len(transcript_chunks)}...")
+            analysis = None
+            try:
+                result = await agent.run(
+                    build_transcript_analysis_prompt(
+                        transcript=chunk, include_broll=include_broll, language=language
+                    )
+                )
+                
+                if hasattr(result, 'output') and isinstance(result.output, str):
+                    output_str = result.output
+                    
+                    # --- Final, Simplified JSON Extraction ---
+                    think_end_pos = output_str.rfind('</think>')
+                    search_start_pos = think_end_pos + len('</think>') if think_end_pos != -1 else 0
+                    
+                    json_start_pos = -1
+                    first_bracket = output_str.find('[', search_start_pos)
+                    if first_bracket != -1:
+                        json_start_pos = first_bracket
+                        
+                    if json_start_pos != -1:
+                        # The AI returns a list of segments, but our model expects an object.
+                        # We need to wrap the list in an object.
+                        json_str = output_str[json_start_pos:].strip()
+                        segments_list = json.loads(json_str)
 
-        analysis = result.data
+                        # --- Data Transformation Step ---
+                        adapted_segments = []
+                        for segment in segments_list:
+                            virality_breakdown = segment.get("virality_breakdown", {})
+                            adapted_segment = {
+                                "start_time": segment.get("start_time"),
+                                "end_time": segment.get("end_time"),
+                                "text": segment.get("text"),
+                                "relevance_score": 0.9,  # Provide a default value
+                                "reasoning": segment.get("reasoning", "AI generated clip."),
+                                "virality": {
+                                    "hook_score": int(virality_breakdown.get("hook_strength", 0)),
+                                    "engagement_score": int(virality_breakdown.get("engagement", 0)),
+                                    "value_score": int(virality_breakdown.get("value", 0)),
+                                    "shareability_score": int(virality_breakdown.get("shareability", 0)),
+                                    "total_score": int(segment.get("virality_score", 0)),
+                                    "hook_type": "none", # Provide a default
+                                    "virality_reasoning": segment.get("reasoning", "AI generated clip.")
+                                }
+                            }
+                            adapted_segments.append(adapted_segment)
+                        
+                        analysis_obj = {
+                            "most_relevant_segments": adapted_segments,
+                            "summary": "Summary not generated by model.",
+                            "key_topics": []
+                        }
+                        analysis = TranscriptAnalysis.model_validate(analysis_obj)
+                    else:
+                        logger.warning(f"Could not find JSON array start in AI output for chunk {i+1}")
+                else:
+                    logger.warning(f"AI result for chunk {i+1} is not in the expected format. Got: {type(result)}")
+
+            except Exception as e:
+                logger.error(f"Error analyzing chunk {i + 1} with pydantic-ai: {e}", exc_info=True)
+                if 'result' in locals() and hasattr(result, 'output'):
+                    logger.error(f"Raw AI output for failed chunk {i+1}: {result.output}")
+                continue
+
+            if not isinstance(analysis, TranscriptAnalysis):
+                 logger.warning(f"Chunk {i+1} analysis result is not a valid TranscriptAnalysis object. Skipping.")
+                 continue
+            
+            all_segments.extend(analysis.most_relevant_segments)
+            if analysis.summary:
+                all_summaries.append(analysis.summary)
+            if analysis.key_topics:
+                all_key_topics.update(analysis.key_topics)
+            if include_broll and analysis.broll_opportunities:
+                all_broll_opps.extend(analysis.broll_opportunities)
+
+        # Combine results from all chunks
+        final_summary = " ".join(all_summaries)
+        final_key_topics = sorted(list(all_key_topics))
+
         logger.info(
-            f"AI analysis found {len(analysis.most_relevant_segments)} segments"
+            f"AI analysis found a total of {len(all_segments)} segments across all chunks."
         )
 
-        # Validation with virality data handling
+        # Validation logic remains the same, applied to the combined list of segments
         validated_segments = []
-        for segment in analysis.most_relevant_segments:
-            # Validate text content
+        for segment in all_segments:
+            # (Validation logic from the original function is preserved here)
             if not segment.text.strip() or len(segment.text.split()) < 3:
-                logger.warning(
-                    f"Skipping segment with insufficient content: '{segment.text[:50]}...'"
-                )
                 continue
-
-            # Validate timestamps - CRITICAL: start and end must be different
             if segment.start_time == segment.end_time:
-                logger.warning(
-                    f"Skipping segment with identical start/end times: {segment.start_time}"
-                )
                 continue
-
-            # Parse timestamps to validate duration
             try:
                 start_parts = segment.start_time.split(":")
                 end_parts = segment.end_time.split(":")
-
                 start_seconds = int(start_parts[0]) * 60 + int(start_parts[1])
                 end_seconds = int(end_parts[0]) * 60 + int(end_parts[1])
-
                 duration = end_seconds - start_seconds
-
-                if duration <= 0:
-                    logger.warning(
-                        f"Skipping segment with invalid duration: {segment.start_time} to {segment.end_time} = {duration}s"
-                    )
+                if duration <= 0 or duration < 5:
                     continue
-
-                if duration < 5:  # Minimum 5 seconds
-                    logger.warning(
-                        f"Skipping segment too short: {duration}s (min 5s required)"
-                    )
-                    continue
-
-                # Validate virality scores
                 if segment.virality:
-                    # Ensure total score is sum of subscores
                     calculated_total = (
                         segment.virality.hook_score
                         + segment.virality.engagement_score
@@ -348,28 +376,11 @@ async def get_most_relevant_parts_by_transcript(
                         + segment.virality.shareability_score
                     )
                     if segment.virality.total_score != calculated_total:
-                        logger.warning(
-                            f"Correcting virality total: {segment.virality.total_score} -> {calculated_total}"
-                        )
                         segment.virality.total_score = calculated_total
-
                 validated_segments.append(segment)
-                virality_info = (
-                    f", virality={segment.virality.total_score}"
-                    if segment.virality
-                    else ""
-                )
-                logger.info(
-                    f"Validated segment: {segment.start_time}-{segment.end_time} ({duration}s){virality_info}"
-                )
-
-            except (ValueError, IndexError) as e:
-                logger.warning(
-                    f"Skipping segment with invalid timestamp format: {segment.start_time}-{segment.end_time}: {e}"
-                )
+            except (ValueError, IndexError):
                 continue
 
-        # Sort by virality score (primary) then relevance (secondary)
         validated_segments.sort(
             key=lambda x: (
                 x.virality.total_score if x.virality else 0,
@@ -380,9 +391,9 @@ async def get_most_relevant_parts_by_transcript(
 
         final_analysis = TranscriptAnalysis(
             most_relevant_segments=validated_segments,
-            summary=analysis.summary,
-            key_topics=analysis.key_topics,
-            broll_opportunities=analysis.broll_opportunities if include_broll else None,
+            summary=final_summary,
+            key_topics=final_key_topics,
+            broll_opportunities=all_broll_opps if include_broll else None,
         )
 
         logger.info(f"Selected {len(validated_segments)} segments for processing")
@@ -395,7 +406,7 @@ async def get_most_relevant_parts_by_transcript(
         return final_analysis
 
     except Exception as e:
-        logger.error(f"Error in transcript analysis: {e}")
+        logger.error(f"Error in transcript analysis: {e}", exc_info=True)
         raise RuntimeError(f"Transcript analysis failed: {str(e)}") from e
 
 

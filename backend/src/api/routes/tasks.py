@@ -11,6 +11,7 @@ import logging
 from typing import Dict, Any
 import inspect
 import re
+from typing import Literal
 
 from ...database import get_db
 from ...database import AsyncSessionLocal
@@ -122,6 +123,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     caption_template = data.get("caption_template", "default")
     include_broll = data.get("include_broll", False)
     processing_mode = data.get("processing_mode", config.default_processing_mode)
+    chunk_size = data.get("chunk_size") or 15000
+    language = data.get("language", "auto")
     if processing_mode not in {"fast", "balanced", "quality"}:
         processing_mode = config.default_processing_mode
     output_format = data.get("output_format", "vertical")
@@ -148,8 +151,10 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             font_size=font_size,
             font_color=font_color,
             caption_template=caption_template,
-            include_broll=include_broll,
+            include_broll=data.get("include_broll", False),
             processing_mode=processing_mode,
+            chunk_size=chunk_size,
+            language=language,
         )
 
         # Get source type for worker
@@ -161,18 +166,20 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
         queue_adapter = getattr(request.app.state, "queue_adapter", JobQueue)
         job_id = await queue_adapter.enqueue_processing_job(
             "process_video_task",
-            processing_mode,
-            task_id,
-            raw_source["url"],
-            source_type,
-            user_id,
-            font_family,
-            font_size,
-            font_color,
-            caption_template,
-            processing_mode,
-            output_format,
-            add_subtitles,
+            {
+                "task_id": task_id,
+                "url": raw_source["url"],
+                "source_type": source_type,
+                "user_id": user_id,
+                "font_family": font_family,
+                "font_size": font_size,
+                "font_color": font_color,
+                "caption_template": caption_template,
+                "processing_mode": processing_mode,
+                "output_format": output_format,
+                "add_subtitles": add_subtitles,
+                "language": language,
+            },
         )
 
         # Save source metadata for resume/retries in environments without sources.url column
@@ -336,6 +343,7 @@ async def get_task_progress_sse(task_id: str, request: Request):
             port=runtime_config.redis_port,
             password=runtime_config.redis_password,
             decode_responses=True,
+            socket_keepalive=True,
         )
 
         try:
@@ -591,39 +599,48 @@ async def regenerate_clip(
         )
 
 
+from pydantic import BaseModel
+
+class TaskSettingsUpdate(BaseModel):
+    font_family: str
+    font_size: int
+    font_color: str
+    caption_template: str
+    include_broll: bool
+    audio_fade_in: bool = False
+    audio_fade_out: bool = False
+    processing_mode: Literal['fast', 'balanced', 'quality']
+    apply_to_existing: bool
+
 @router.post("/{task_id}/settings")
 async def apply_task_settings(
-    task_id: str, request: Request, db: AsyncSession = Depends(get_db)
+    task_id: str,
+    settings: TaskSettingsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
 ):
     """Update task-level styling settings and optionally apply to all existing clips."""
     try:
-        payload = await request.json()
-        font_family = _normalize_font_family(
-            payload.get("font_family", "TikTokSans-Regular")
-        )
-        font_size = _normalize_font_size(payload.get("font_size", 24))
-        font_color = _normalize_font_color(payload.get("font_color", "#FFFFFF"))
-        caption_template = payload.get("caption_template", "default")
-        include_broll = bool(payload.get("include_broll", False))
-        apply_to_existing = bool(payload.get("apply_to_existing", False))
-
         task_service = TaskService(db)
         await _require_task_owner(request, task_service, db, task_id)
         task_record = await task_service.task_repo.get_task_by_id(db, task_id)
         if not task_record:
             raise HTTPException(status_code=404, detail="Task not found")
-        if not is_font_accessible(font_family, task_record["user_id"]):
+        if not is_font_accessible(settings.font_family, task_record["user_id"]):
             raise HTTPException(
                 status_code=400, detail="Selected font is not available"
             )
         task = await task_service.update_task_settings(
             task_id,
-            font_family,
-            font_size,
-            font_color,
-            caption_template,
-            include_broll,
-            apply_to_existing,
+            settings.font_family,
+            settings.font_size,
+            settings.font_color,
+            settings.caption_template,
+            settings.include_broll,
+            settings.audio_fade_in,
+            settings.audio_fade_out,
+            settings.processing_mode,
+            settings.apply_to_existing,
         )
         return {"task": task, "message": "Task settings updated"}
     except ValueError as e:
@@ -789,18 +806,20 @@ async def resume_task(
 
         job_id = await JobQueue.enqueue_processing_job(
             "process_video_task",
-            processing_mode,
-            task_id,
-            source_url,
-            source_type,
-            task["user_id"],
-            task.get("font_family") or "TikTokSans-Regular",
-            task.get("font_size") or 24,
-            task.get("font_color") or "#FFFFFF",
-            task.get("caption_template") or "default",
-            processing_mode,
-            output_format,
-            add_subtitles,
+            {
+                "task_id": task_id,
+                "url": source_url,
+                "source_type": source_type,
+                "user_id": task["user_id"],
+                "font_family": task.get("font_family") or "TikTokSans-Regular",
+                "font_size": task.get("font_size") or 24,
+                "font_color": task.get("font_color") or "#FFFFFF",
+                "caption_template": task.get("caption_template") or "default",
+                "processing_mode": processing_mode,
+                "output_format": output_format,
+                "add_subtitles": add_subtitles,
+                "language": task.get("language") or "auto",
+            },
         )
 
         return {"message": "Task resumed", "job_id": job_id}

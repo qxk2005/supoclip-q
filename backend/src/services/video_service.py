@@ -88,28 +88,37 @@ class VideoService:
     @staticmethod
     async def generate_transcript(
         video_path: Path, processing_mode: str = "balanced"
-    ) -> str:
+    ) -> tuple[str, str]:
         """
-        Generate transcript from video using AssemblyAI.
+        Generate transcript from video using faster-whisper.
         Runs in thread pool to avoid blocking.
+        Returns a tuple of (transcript_text, language_code).
         """
         logger.info(f"Generating transcript for: {video_path}")
         speech_model = "best"
         if processing_mode == "fast":
             speech_model = config.fast_mode_transcript_model
 
-        transcript = await run_in_thread(get_video_transcript, video_path, speech_model)
-        logger.info(f"Transcript generated: {len(transcript)} characters")
-        return transcript
+        transcript, language = await run_in_thread(
+            get_video_transcript, video_path, speech_model
+        )
+        logger.info(
+            f"Transcript generated: {len(transcript)} characters, language: {language}"
+        )
+        return transcript, language
 
     @staticmethod
-    async def analyze_transcript(transcript: str) -> Any:
+    async def analyze_transcript(
+        transcript: str, chunk_size: int, language: str = "en"
+    ) -> Any:
         """
         Analyze transcript with AI to find relevant segments.
         This is already async, no need to wrap.
         """
         logger.info("Starting AI analysis of transcript")
-        relevant_parts = await get_most_relevant_parts_by_transcript(transcript)
+        relevant_parts = await get_most_relevant_parts_by_transcript(
+            transcript, chunk_size=chunk_size, language=language
+        )
         logger.info(
             f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found"
         )
@@ -125,6 +134,9 @@ class VideoService:
         caption_template: str = "default",
         output_format: str = "vertical",
         add_subtitles: bool = True,
+        audio_fade_in: bool = False,
+        audio_fade_out: bool = False,
+        processing_mode: str = "fast",
     ) -> List[Dict[str, Any]]:
         """
         Create standalone video clips from segments with optional subtitles.
@@ -147,6 +159,9 @@ class VideoService:
             caption_template,
             output_format,
             add_subtitles,
+            audio_fade_in,
+            audio_fade_out,
+            processing_mode,
         )
 
         logger.info(f"Successfully created {len(clips_info)} clips")
@@ -164,6 +179,9 @@ class VideoService:
         caption_template: str = "default",
         output_format: str = "vertical",
         add_subtitles: bool = True,
+        audio_fade_in: bool = False,
+        audio_fade_out: bool = False,
+        processing_mode: str = "fast",
     ) -> Optional[Dict[str, Any]]:
         """Render a single clip in the thread pool and return clip_info dict, or None on failure."""
         try:
@@ -196,6 +214,9 @@ class VideoService:
                 font_color,
                 caption_template,
                 output_format,
+                audio_fade_in,
+                audio_fade_out,
+                processing_mode,
             )
 
             if not success:
@@ -259,6 +280,8 @@ class VideoService:
         processing_mode: str = "fast",
         output_format: str = "vertical",
         add_subtitles: bool = True,
+        chunk_size: int = 15000,
+        language: str = "auto",
         cached_transcript: Optional[str] = None,
         cached_analysis_json: Optional[str] = None,
         progress_callback: Optional[Callable[[int, str, str], Awaitable[None]]] = None,
@@ -315,10 +338,13 @@ class VideoService:
                 await progress_callback(30, "Generating transcript...", "processing")
 
             transcript = cached_transcript
+            detected_lang = "en"  # Default language
             if not transcript:
-                transcript = await VideoService.generate_transcript(
+                logger.info("No cached transcript found, generating new one.")
+                transcript, detected_lang = await VideoService.generate_transcript(
                     video_path, processing_mode=processing_mode
                 )
+                logger.info(f"Transcript generated with length: {len(transcript)}")
 
             # Step 3: AI analysis
             if should_cancel and await should_cancel():
@@ -329,6 +355,7 @@ class VideoService:
                     50, "Analyzing content with AI...", "processing"
                 )
 
+            logger.info("Before AI analysis")
             relevant_parts = None
             if cached_analysis_json:
                 try:
@@ -354,7 +381,10 @@ class VideoService:
                     relevant_parts = None
 
             if relevant_parts is None:
-                relevant_parts = await VideoService.analyze_transcript(transcript)
+                final_lang = language or detected_lang or "en"
+                relevant_parts = await VideoService.analyze_transcript(
+                    transcript, chunk_size=chunk_size, language=final_lang
+                )
 
             # Step 4: Create clips
             if should_cancel and await should_cancel():

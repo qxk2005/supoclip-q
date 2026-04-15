@@ -1,0 +1,427 @@
+Thinking Process:
+
+1.  **Analyze the Request:**
+    *   **Role:** Expert transcript analyst for short-form video editing.
+    *   **Task:** Identify and extract the best clip candidates from the provided transcript.
+    *   **Core Objectives:** Engaging, informative, entertaining segments suitable for social media (Shorts/Reels/TikTok). Strong hooks, emotional moments, valuable info.
+    *   **Grounding Rules:** Use only provided transcript lines/timestamps. No invention. Contiguous blocks only. Text must match transcript.
+    *   **Selection Criteria:** Strong hooks, valuable content, emotional moments, complete thoughts, entertaining.
+    *   **Viral Scoring:** 0-100 total (Hook, Engagement, Value, Shareability - each 0-25).
+    *   **Timing:** Ideally 10-60 seconds.
+    *   **Accuracy:** Critical. Do not fabricate. Prioritize accuracy over "viral" if tradeoff exists.
+
+2.  **Analyze the Transcript:**
+    *   **Topic:** Evolution of the iPhone (from 2007 to iPhone 16e/2025).
+    *   **Structure:** Chronological history of iPhone models, key features, prices, fun facts, and business milestones.
+    *   **Potential Hooks:**
+        *   "Before it changed the world, it was just a strange idea." (00:00)
+        *   "A phone with only one button." (00:04)
+        *   Steve Jobs hating styluses. (01:07)
+        *   Steve Jobs passing away after 4S announcement. (02:30)
+        *   BendGate scandal. (04:23)
+        *   Removing headphone jack backlash. (05:47)
+        *   $999 price tag for iPhone X. (06:51)
+        *   Apple worth more than most countries. (12:33)
+        *   Indonesia ban & $1 billion investment. (14:06)
+        *   iPhone 16e replacing SE line. (14:35)
+
+3.  **Identify Segments:**
+
+    *   *Segment 1: The Origin Story/Hook.*
+        *   Start: 00:00 "Before it changed the world..."
+        *   End: 00:16 "...took over the world."
+        *   Why: Strong narrative hook, sets the stage.
+        *   Refinement: Maybe extend to the specific "one button" detail for clarity.
+        *   Range: 00:00 - 00:16.
+
+    *   *Segment 2: Steve Jobs & The Stylus.*
+        *   Start: 00:56 "Fun fact, Apple came up with the iPhone idea..."
+        *   End: 01:15 "So the iPhone used your fingers instead."
+        *   Why: Famous Jobs quote/moment, entertaining, humanizes the tech.
+        *   Range: 00:56 - 01:15.
+
+    *   *Segment 3: Steve Jobs' Death.*
+        *   Start: 02:30 "But sadly, just one day after the iPhone 4S was announced..."
+        *   End: 02:39 "...how far it would go."
+        *   Why: Emotional moment, significant historical context.
+        *   Range: 02:30 - 02:39.
+
+    *   *Segment 4: BendGate Scandal.*
+        *   Start: 04:23 "However, some users noticed the phones..."
+        *   End: 04:40 "...best selling iPhones of all time."
+        *   Why: Controversy/Scandal always engages. Contrast failure with success.
+        *   Range: 04:23 - 04:40.
+
+    *   *Segment 5: Removing the Headphone Jack.*
+        *   Start: 05:42 "That same year, Apple launched the iPhone 7 and 7 Plus..."
+        *   End: 05:53 "...or the new AirPods."
+        *   Why: Controversial decision, relatable pain point for many users.
+        *   Range: 05:42 - 05:53. (Maybe extend slightly to include water resistance for value? 05:54-05:56). Let's keep it tight on the controversy. 05:42 - 05:53.
+
+    *   *Segment 6: iPhone X Price Shock.*
+        *   Start: 06:36 "Skipping the iPhone 9..."
+        *   End: 06:54 "...steep $999 price tag."
+        *   Why: Major design shift + price shock.
+        *   Range: 06:36 - 06:54.
+
+    *   *Segment 7: Apple's Valuation vs Countries.*
+        *   Start: 12:24 "Fun fact, as of writing..."
+        *   End: 12:44 "...most countries earn in a year."
+        *   Why: Mind-blowing stat, highly shareable.
+        *   Range: 12:24 - 12:44.
+
+    *   *Segment 8: Indonesia Ban.*
+        *   Start: 14:06 "Fun fact, Indonesia banned the iPhone 16..."
+        *   End: 14:22 "...to lift the ban."
+        *   Why: Unexpected news, business drama.
+        *   Range: 14:06 - 14:22.
+
+    *   *Segment 9: iPhone 16e (New Budget Model).*
+        *   Start: 14:27 "This is iPhone 16e."
+        *   End: 14:52 "...powerful A18 chip" (Transcript ends abruptly here, but it's a complete thought enough for a clip about the new model).
+        *   Why: New information, relevant to buyers.
+        *   Range: 14:27 - 14:52.
+
+4.  **Review and Refine Timestamps:**
+    *   Check contiguous lines.
+    *   Ensure text matches exactly.
+    *   Calculate durations (aiming for 10-60s).
+
+    *   *Segment 1 (Origins):* 00:00 - 00:16 (16s). Good.
+    *   *Segment 2 (Stylus):* 00:56 - 01:15 (19s). Good.
+    *   *Segment 3 (Jobs Death):* 02:30 - 02:39 (9s). A bit short. Let's include the success stats after to balance the emotion. 02:30 - 02:49. (19s). Better.
+    *   *Segment 4 (BendGate):* 04:23 - 04:40 (17s). Good.
+    *   *Segment 5 (Headphone Jack):* 05:42 - 05:53 (11s). A bit short. Add the water resistance/storage context? 05:42 - 06:00. (18s). Better context.
+    *   *Segment 6 (iPhone X):* 06:36 - 06:54 (18s). Good.
+    *   *Segment 7 (Valuation):* 12:24 - 12:44 (20s). Good.
+    *   *Segment 8 (Indonesia):* 14:06 - 14:22 (16s). Good.
+    *   *Segment 9 (16e):* 14:27 - 14:52 (25s). Good.
+
+5.  **Final Scoring:**
+    *   Evaluate each based on Hook, Engagement, Value, Shareability.
+    *   Ensure text extraction is precise.
+
+6.  **Formatting:**
+    *   Follow the requested output format (Segment description, timestamps, text, scoring breakdown).
+
+    *Self-Correction on Segment 3:* The transcript jumps from 02:39 to 02:43. I need to make sure I don't merge non-contiguous lines if there's a gap.
+    Looking at transcript:
+    [02:36 - 02:38] The man behind the iPhone never got to see
+    [02:38 - 02:39] how far it would go.
+    [02:43 - 02:46] His final iPhone models became a global success
+    There is a gap between 02:39 and 02:43. I cannot merge them into one contiguous segment if the rule is "contiguous block of text in the transcript". The prompt says "Select only contiguous ranges that already exist in the transcript." and "Do not merge separate non-contiguous moments into one segment."
+    However, usually, in transcript analysis, if there is a small gap in timestamping but the audio flows, it might be okay, but strict adherence says "contiguous block". The transcript lines are contiguous in *text flow* even if timestamps have gaps (likely due to silence or editing in the source).
+    Actually, looking at the provided transcript lines:
+    [02:30 - 02:33] But sadly, just one day after the iPhone 4S was announced,
+    [02:34 - 02:35] Steve Jobs passed away.
+    [02:36 - 02:38] The man behind the iPhone never got to see
+    [02:38 - 02:39] how far it would go.
+    [02:43 - 02:46] His final iPhone models became a global success
+    There is a 4-second gap in the provided text blocks (02:39 to 02:43). To be safe on accuracy rules ("Do not merge separate non-contiguous moments"), I should stop at 02:39. 9 seconds is short for a Short, but accurate. Or I can start earlier.
+    Let's look at 02:15 - 02:39. That covers the 4S announcement leading into the death.
+    [02:15 - 02:17] In 2011, the iPhone 4S arrived.
+    ...
+    [02:30 - 02:33] But sadly, just one day after the iPhone 4S was announced,
+    This creates a contiguous block from 02:15 to 02:39. Duration: 24 seconds. This is better.
+
+    *Self-Correction on Segment 5:*
+    [05:42 - 05:46] That same year, Apple launched the iPhone 7 and 7 Plus,
+    [05:47 - 05:49] sparking backlash for removing the headphone jack.
+    [05:50 - 05:53] Users now needed lightning headphones or the new AirPods.
+    [05:54 - 05:56] The iPhone 7 was more water-resistant
+    This is contiguous. 05:42 - 06:00 is fine.
+
+    *Self-Correction on Segment 9:*
+    Ends at 14:52. Transcript ends there. It's contiguous from 14:27.
+
+    *Check Timestamps:* Ensure start_time is earliest in range, end_time is latest in range.
+
+    *Check Text:* Must match exactly.
+
+    *Scoring:* Be objective.
+
+    Let's finalize the list.
+    1. Intro/Hook (00:00 - 00:16)
+    2. Steve Jobs Stylus Rant (00:56 - 01:15)
+    3. Steve Jobs Death (02:15 - 02:39) - *Wait, 02:15 starts "In 2011, the iPhone 4S arrived." This provides context for the "But sadly" later.*
+    4. BendGate (04:23 - 04:40)
+    5. Headphone Jack (05:42 - 06:00)
+    6. iPhone X Price/Design (06:36 - 06:54)
+    7. Apple Valuation (12:24 - 12:44)
+    8. Indonesia Ban (14:06 - 14:22)
+    9. iPhone 16e Launch (14:27 - 14:52)
+
+    Wait, I need to check if 02:15 to 02:39 is truly contiguous in the provided text lines.
+    Lines:
+    [02:15 - 02:17] In 2011, the iPhone 4S arrived.
+    [02:18 - 02:21] It looked the same, but featured a faster A5 chip,
+    [02:22 - 02:25] 1080p video, up to 64 gigabytes of storage,
+    [02:26 - 02:29] and introduced Siri, Apple's voice assistant.
+    [02:30 - 02:33] But sadly, just one day after the iPhone 4S was announced,
+    [02:34 - 02:35] Steve Jobs passed away.
+    [02:36 - 02:38] The man behind the iPhone never got to see
+    [02:38 - 02:39] how far it would go.
+    Yes, these lines are sequential without gaps in the line list provided (timestamps overlap or touch).
+    Wait, looking closely at the provided text:
+    [02:29] ends.
+    [02:30] starts.
+    Yes, contiguous.
+
+    One more check: Segment 1 (00:00 - 00:16).
+    Lines:
+    [00:00 - 00:03] Before it changed the world, it was just a strange idea.
+    [00:04 - 00:05] A phone with only one button.
+    [00:06 - 00:09] In 2007, Apple launched the iPhone,
+    [00:09 - 00:11] and tech was never the same.
+    [00:12 - 00:14] Now, with the iPhone 17, we look back
+    [00:14 - 00:16] at how the iPhone took over the world.
+    Contiguous.
+
+    Segment 7 (12:24 - 12:44).
+    [12:24 - 12:26] Fun fact, as of writing,
+    [12:26 - 12:30] Apple holds 27.6% of global smartphone sales
+    [12:31 - 12:33] and is the most valuable company in the world,
+    [12:33 - 12:35] worth over $3 trillion.
+    [12:36 - 12:39] For perspective, only 10 countries have a higher GDP,
+    [12:40 - 12:44] meaning Apple is worth more than most countries earn in a year.
+    Contiguous.
+
+    Okay, ready to generate output. I will select the top 5-6 strongest segments to ensure quality over quantity, though the prompt says "Find all compelling segments". I'll list the best ones. I'll aim for about 6-8 high-quality segments.
+
+    Re-evaluating Segment 3 (Jobs Death). While emotional, is it "viral" in a positive sense? It's high engagement. I'll keep it.
+    Re-evaluating Segment 9 (16e). It's very new info (2025), high value for tech enthusiasts.
+
+    Let's refine the scoring.
+    Intro: High hook, high value (context).
+    Stylus: High engagement (Jobs personality).
+    Jobs Death: High emotion.
+    BendGate: High engagement (controversy).
+    Headphone Jack: High engagement (controversy).
+    Valuation: High shareability (mind-blowing stat).
+    Indonesia: High shareability (news).
+    16e: High value (new product).
+
+    I will select the top 6 distinct moments to avoid overwhelming, focusing on the best viral potential.
+    1. Intro (00:00-00:16)
+    2. Stylus (00:56-01:15)
+    3. Jobs Death (02:15-02:39)
+    4. BendGate (04:23-04:40)
+    5. Valuation (12:24-12:44)
+    6. Indonesia Ban (14:06-14:22)
+    7. iPhone 16e (14:27-14:52)
+
+    Actually, I'll include the Headphone Jack one too, it's very recognizable.
+    Okay, I'll list 7 segments.
+
+    Wait, checking timestamps again.
+    Segment 1: 00:00 - 00:16.
+    Segment 2: 00:56 - 01:15.
+    Segment 3: 02:15 - 02:39.
+    Segment 4: 04:23 - 04:40.
+    Segment 5: 05:42 - 06:00.
+    Segment 6: 12:24 - 12:44.
+    Segment 7: 14:06 - 14:22.
+    Segment 8: 14:27 - 14:52.
+
+    Double Check Text Accuracy.
+    Segment 1 Text:
+    Before it changed the world, it was just a strange idea.
+    A phone with only one button.
+    In 2007, Apple launched the iPhone,
+    and tech was never the same.
+    Now, with the iPhone 17, we look back
+    at how the iPhone took over the world.
+
+    Segment 2 Text:
+    Fun fact, Apple came up with the iPhone idea
+    all the way back in 1983 as a touchscreen landline
+    with a stylus, but Jobs hated styluses.
+    Who wants a stylus?
+    You have to get them and put them away
+    and you lose them, yuck.
+    So the iPhone used your fingers instead.
+
+    Segment 3 Text:
+    In 2011, the iPhone 4S arrived.
+    It looked the same, but featured a faster A5 chip,
+    1080p video, up to 64 gigabytes of storage,
+    and introduced Siri, Apple's voice assistant.
+    But sadly, just one day after the iPhone 4S was announced,
+    Steve Jobs passed away.
+    The man behind the iPhone never got to see
+    how far it would go.
+
+    Segment 4 Text:
+    However, some users noticed the phones
+    could bend in their pockets,
+    sparking the infamous BendGate scandal.
+    Still, both models were a massive success,
+    selling a record breaking 222 million units,
+    making them the best selling iPhones of all time.
+
+    Segment 5 Text:
+    That same year, Apple launched the iPhone 7 and 7 Plus,
+    sparking backlash for removing the headphone jack.
+    Users now needed lightning headphones or the new AirPods.
+    The iPhone 7 was more water-resistant
+    and offered up to 256 gigabytes of storage.
+
+    Segment 6 Text:
+    Fun fact, as of writing,
+    Apple holds 27.6% of global smartphone sales
+    and is the most valuable company in the world,
+    worth over $3 trillion.
+    For perspective, only 10 countries have a higher GDP,
+    meaning Apple is worth more than most countries earn in a year.
+
+    Segment 7 Text:
+    Fun fact, Indonesia banned the iPhone 16
+    because it did not meet the country's rule
+    that 40% of the phone's parts must be locally made.
+    Apple Solution, a $1 billion investment
+    to build a factory in Indonesia to lift the ban.
+
+    Segment 8 Text:
+    This is iPhone 16e.
+    Released in February 2025 for $599,
+    the iPhone 16e replaced the SE line
+    as Apple's new budget model.
+    Available in classic black or white,
+    it featured a 6.1 inch OLED display, face ID,
+    and dropped the home button.
+    Under the hood, it ran on a powerful A18 chip
+
+    All text matches transcript exactly. Timestamps are contiguous within segments.
+    Ready to write.
+</think>
+
+### Segment 1: The Origin Story Hook
+**Timestamps:** [00:00 - 00:16]
+**Text:**
+Before it changed the world, it was just a strange idea.
+A phone with only one button.
+In 2007, Apple launched the iPhone,
+and tech was never the same.
+Now, with the iPhone 17, we look back
+at how the iPhone took over the world.
+
+**Virality Score:** 88/100
+*   **Hook Strength (23/25):** "Before it changed the world..." immediately creates curiosity.
+*   **Engagement (21/25):** Nostalgic tone appeals to tech fans.
+*   **Value (22/25):** Sets clear context for the video's purpose.
+*   **Shareability (22/25):** Strong opening for a compilation or history video.
+
+### Segment 2: Steve Jobs Hates Styluses
+**Timestamps:** [00:56 - 01:15]
+**Text:**
+Fun fact, Apple came up with the iPhone idea
+all the way back in 1983 as a touchscreen landline
+with a stylus, but Jobs hated styluses.
+Who wants a stylus?
+You have to get them and put them away
+and you lose them, yuck.
+So the iPhone used your fingers instead.
+
+**Virality Score:** 92/100
+*   **Hook Strength (24/25):** "Fun fact" + specific year grabs attention.
+*   **Engagement (24/25):** Jobs' personality ("yuck") is entertaining and humanizing.
+*   **Value (22/25):** Historical insight into design decisions.
+*   **Shareability (22/25):** Highly quotable moment often referenced in tech culture.
+
+### Segment 3: Steve Jobs' Passing
+**Timestamps:** [02:15 - 02:39]
+**Text:**
+In 2011, the iPhone 4S arrived.
+It looked the same, but featured a faster A5 chip,
+1080p video, up to 64 gigabytes of storage,
+and introduced Siri, Apple's voice assistant.
+But sadly, just one day after the iPhone 4S was announced,
+Steve Jobs passed away.
+The man behind the iPhone never got to see
+how far it would go.
+
+**Virality Score:** 85/100
+*   **Hook Strength (20/25):** Starts with specs, shifts to emotion.
+*   **Engagement (24/25):** High emotional resonance regarding Jobs' death.
+*   **Value (21/25):** Connects product launch to historical event.
+*   **Shareability (20/25):** Respectful tribute content often shared on anniversaries.
+
+### Segment 4: The BendGate Scandal
+**Timestamps:** [04:23 - 04:40]
+**Text:**
+However, some users noticed the phones
+could bend in their pockets,
+sparking the infamous BendGate scandal.
+Still, both models were a massive success,
+selling a record breaking 222 million units,
+making them the best selling iPhones of all time.
+
+**Virality Score:** 89/100
+*   **Hook Strength (22/25):** "BendGate scandal" is a known controversy hook.
+*   **Engagement (23/25):** Conflict (failure) vs. Success (sales) creates narrative tension.
+*   **Value (22/25):** Informative about a specific historical flaw.
+*   **Shareability (22/25):** Controversial topics drive comments and shares.
+
+### Segment 5: Removing the Headphone Jack
+**Timestamps:** [05:42 - 06:00]
+**Text:**
+That same year, Apple launched the iPhone 7 and 7 Plus,
+sparking backlash for removing the headphone jack.
+Users now needed lightning headphones or the new AirPods.
+The iPhone 7 was more water-resistant
+and offered up to 256 gigabytes of storage.
+
+**Virality Score:** 90/100
+*   **Hook Strength (23/25):** "Removing the headphone jack" is a major pain point hook.
+*   **Engagement (24/25):** Relatable frustration for many users.
+*   **Value (21/25):** Explains the trade-off (AirPods/Water resistance).
+*   **Shareability (22/25):** Highly discussable topic in tech communities.
+
+### Segment 6: Apple Worth More Than Countries
+**Timestamps:** [12:24 - 12:44]
+**Text:**
+Fun fact, as of writing,
+Apple holds 27.6% of global smartphone sales
+and is the most valuable company in the world,
+worth over $3 trillion.
+For perspective, only 10 countries have a higher GDP,
+meaning Apple is worth more than most countries earn in a year.
+
+**Virality Score:** 95/100
+*   **Hook Strength (25/25):** "Fun fact" + massive dollar amount.
+*   **Engagement (24/25):** Mind-blowing comparison (Company vs. Countries).
+*   **Value (23/25):** Concrete economic data.
+*   **Shareability (23/25):** Perfect "did you know" stat for social sharing.
+
+### Segment 7: Indonesia iPhone Ban
+**Timestamps:** [14:06 - 14:22]
+**Text:**
+Fun fact, Indonesia banned the iPhone 16
+because it did not meet the country's rule
+that 40% of the phone's parts must be locally made.
+Apple Solution, a $1 billion investment
+to build a factory in Indonesia to lift the ban.
+
+**Virality Score:** 91/100
+*   **Hook Strength (24/25):** "Indonesia banned the iPhone 16" is shocking news.
+*   **Engagement (23/25):** Corporate drama and geopolitical rules are engaging.
+*   **Value (22/25):** Explains the "why" and the solution.
+*   **Shareability (22/25):** News-worthy content likely to be shared in tech news circles.
+
+### Segment 8: iPhone 16e Launch (New Budget Model)
+**Timestamps:** [14:27 - 14:52]
+**Text:**
+This is iPhone 16e.
+Released in February 2025 for $599,
+the iPhone 16e replaced the SE line
+as Apple's new budget model.
+Available in classic black or white,
+it featured a 6.1 inch OLED display, face ID,
+and dropped the home button.
+Under the hood, it ran on a powerful A18 chip
+
+**Virality Score:** 87/100
+*   **Hook Strength (22/25):** "This is iPhone 16e" introduces new hardware.
+*   **Engagement (21/25):** Appeals to buyers looking for budget options.
+*   **Value (24/25):** High informational value regarding specs and price.
+*   **Shareability (20/25):** Useful for consumers, less viral than controversy but high utility.

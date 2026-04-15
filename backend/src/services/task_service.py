@@ -81,6 +81,8 @@ class TaskService:
         caption_template: str = "default",
         include_broll: bool = False,
         processing_mode: str = "fast",
+        chunk_size: int = 15000,
+        language: str = "auto",
     ) -> str:
         """
         Create a new task with associated source.
@@ -117,6 +119,8 @@ class TaskService:
             caption_template=caption_template,
             include_broll=include_broll,
             processing_mode=processing_mode,
+            chunk_size=chunk_size,
+            language=language,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -137,6 +141,8 @@ class TaskService:
         progress_callback: Optional[Callable] = None,
         should_cancel: Optional[Callable] = None,
         clip_ready_callback: Optional[Callable] = None,
+        cleanup_settings: Dict[str, Any] | None = None,
+        language: str = "auto",
     ) -> Dict[str, Any]:
         """
         Process a task: download video, analyze, create clips.
@@ -187,6 +193,16 @@ class TaskService:
                 if progress_callback:
                     await progress_callback(progress, message, status)
 
+            task_details = await self.task_repo.get_task_by_id(self.db, task_id)
+            if not task_details:
+                logger.error(f"Task details not found for task_id: {task_id}")
+                raise ValueError(f"Task details not found for task_id: {task_id}")
+            
+            chunk_size = task_details.get("chunk_size") if task_details else 15000
+            language = task_details.get("language") if task_details else "auto"
+            audio_fade_in = task_details.get("audio_fade_in", False)
+            audio_fade_out = task_details.get("audio_fade_out", False)
+
             # Process video with progress updates
             pipeline_start = perf_counter()
             result = await self.video_service.process_video_complete(
@@ -200,6 +216,8 @@ class TaskService:
                 processing_mode=processing_mode,
                 output_format=output_format,
                 add_subtitles=add_subtitles,
+                chunk_size=chunk_size,
+                language=language,
                 cached_transcript=cached_transcript,
                 cached_analysis_json=cached_analysis_json,
                 progress_callback=update_progress,
@@ -254,6 +272,9 @@ class TaskService:
                     caption_template,
                     output_format,
                     add_subtitles,
+                    audio_fade_in,
+                    audio_fade_out,
+                    processing_mode,
                 )
                 if clip_info is None:
                     continue  # Skip failed clip
@@ -480,6 +501,9 @@ class TaskService:
         font_color: str,
         caption_template: str,
         include_broll: bool,
+        audio_fade_in: bool,
+        audio_fade_out: bool,
+        processing_mode: str,
         apply_to_existing: bool,
     ) -> Dict[str, Any]:
         """Update task-level settings and optionally regenerate all clips."""
@@ -491,6 +515,9 @@ class TaskService:
             font_color,
             caption_template,
             include_broll,
+            audio_fade_in,
+            audio_fade_out,
+            processing_mode,
         )
 
         if apply_to_existing:
@@ -500,6 +527,9 @@ class TaskService:
                 font_size,
                 font_color,
                 caption_template,
+                audio_fade_in,
+                audio_fade_out,
+                processing_mode,
             )
 
         return await self.get_task_with_clips(task_id) or {}
@@ -511,6 +541,9 @@ class TaskService:
         font_size: int,
         font_color: str,
         caption_template: str,
+        audio_fade_in: bool,
+        audio_fade_out: bool,
+        processing_mode: str,
     ) -> None:
         """Regenerate all clips in a task using existing segment boundaries."""
         task = await self.task_repo.get_task_by_id(self.db, task_id)
@@ -519,6 +552,13 @@ class TaskService:
 
         source_url = task.get("source_url")
         source_type = task.get("source_type")
+
+        # If source_url is not directly available on the task, fetch it from the source table
+        if not source_url and task.get("source_id"):
+            source = await self.source_repo.get_source_by_id(self.db, task["source_id"])
+            if source:
+                source_url = source.get("url")
+
         output_format = "vertical"
         add_subtitles = True
 
@@ -551,7 +591,7 @@ class TaskService:
 
         video_path: Path
         if source_type == "youtube":
-            downloaded = await self.video_service.download_video(source_url)
+            downloaded = await self.video_service.download_video(source_url, task_id=task_id)
             if not downloaded:
                 raise ValueError("Failed to download source video for regeneration")
             video_path = Path(downloaded)
@@ -560,23 +600,9 @@ class TaskService:
             if not video_path.exists():
                 raise ValueError("Source video file no longer exists")
 
-        segments = [
-            {
-                "start_time": clip["start_time"],
-                "end_time": clip["end_time"],
-                "text": clip.get("text") or "",
-                "relevance_score": clip.get("relevance_score", 0.5),
-                "reasoning": clip.get("reasoning")
-                or "Regenerated with updated settings",
-                "virality_score": clip.get("virality_score", 0),
-                "hook_score": clip.get("hook_score", 0),
-                "engagement_score": clip.get("engagement_score", 0),
-                "value_score": clip.get("value_score", 0),
-                "shareability_score": clip.get("shareability_score", 0),
-                "hook_type": clip.get("hook_type"),
-            }
-            for clip in clips
-        ]
+        # Generate transcript and segments
+        transcript, _ = await self.video_service.generate_transcript(video_path, processing_mode=processing_mode)
+        segments = await self.ai_service.generate_segments_from_transcript(transcript, processing_mode=processing_mode)
 
         clips_info = await self.video_service.create_video_clips(
             video_path,
@@ -587,6 +613,9 @@ class TaskService:
             caption_template,
             output_format,
             add_subtitles,
+            audio_fade_in,
+            audio_fade_out,
+            processing_mode, # Passing processing_mode
         )
 
         await self.clip_repo.delete_clips_by_task(self.db, task_id)

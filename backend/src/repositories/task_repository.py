@@ -28,6 +28,8 @@ class TaskRepository:
         caption_template: str = "default",
         include_broll: bool = False,
         processing_mode: str = "fast",
+        chunk_size: int = 15000,
+        language: str = "auto",
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -36,12 +38,12 @@ class TaskRepository:
                 text("""
                     INSERT INTO tasks (
                         id, user_id, source_id, status, font_family, font_size, font_color,
-                        caption_template, include_broll, processing_mode,
+                        caption_template, include_broll, processing_mode, chunk_size, language,
                         created_at, updated_at
                     )
                     VALUES (
                         :task_id, :user_id, :source_id, :status, :font_family, :font_size, :font_color,
-                        :caption_template, :include_broll, :processing_mode,
+                        :caption_template, :include_broll, :processing_mode, :chunk_size, :language,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -57,6 +59,8 @@ class TaskRepository:
                     "caption_template": caption_template,
                     "include_broll": include_broll,
                     "processing_mode": processing_mode,
+                    "chunk_size": chunk_size,
+                    "language": language,
                 },
             )
         except Exception:
@@ -95,27 +99,15 @@ class TaskRepository:
         db: AsyncSession, task_id: str
     ) -> Optional[Dict[str, Any]]:
         """Get task by ID with source information."""
-        try:
-            result = await db.execute(
-                text("""
-                    SELECT t.*, s.title as source_title, s.type as source_type, s.url as source_url
-                    FROM tasks t
-                    LEFT JOIN sources s ON t.source_id = s.id
-                    WHERE t.id = :task_id
-                """),
-                {"task_id": task_id},
-            )
-        except Exception:
-            await db.rollback()
-            result = await db.execute(
-                text("""
-                    SELECT t.*, s.title as source_title, s.type as source_type
-                    FROM tasks t
-                    LEFT JOIN sources s ON t.source_id = s.id
-                    WHERE t.id = :task_id
-                """),
-                {"task_id": task_id},
-            )
+        result = await db.execute(
+            text("""
+                SELECT t.*, s.title as source_title, s.type as source_type, s.url as source_url
+                FROM tasks t
+                LEFT JOIN sources s ON t.source_id = s.id
+                WHERE t.id = :task_id
+            """),
+            {"task_id": task_id},
+        )
         row = result.fetchone()
 
         if not row:
@@ -136,7 +128,12 @@ class TaskRepository:
             "font_color": row.font_color,
             "caption_template": getattr(row, "caption_template", "default"),
             "include_broll": getattr(row, "include_broll", False),
+            "audio_fade_in": getattr(row, "audio_fade_in", False),
+            "audio_fade_out": getattr(row, "audio_fade_out", False),
             "processing_mode": getattr(row, "processing_mode", "fast"),
+            "processing_mode": getattr(row, "processing_mode", "fast"),
+            "chunk_size": getattr(row, "chunk_size", 15000),
+            "language": getattr(row, "language", "auto"),
             "cache_hit": getattr(row, "cache_hit", False),
             "error_code": getattr(row, "error_code", None),
             "stage_timings_json": getattr(row, "stage_timings_json", None),
@@ -238,8 +235,11 @@ class TaskRepository:
         font_color: str,
         caption_template: str,
         include_broll: bool,
+        audio_fade_in: bool,
+        audio_fade_out: bool,
+        processing_mode: str,
     ) -> None:
-        """Update task styling settings."""
+        """Update task styling and processing settings."""
         try:
             await db.execute(
                 text(
@@ -250,6 +250,9 @@ class TaskRepository:
                         font_color = :font_color,
                         caption_template = :caption_template,
                         include_broll = :include_broll,
+                        audio_fade_in = :audio_fade_in,
+                        audio_fade_out = :audio_fade_out,
+                        processing_mode = :processing_mode,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -261,6 +264,9 @@ class TaskRepository:
                     "font_color": font_color,
                     "caption_template": caption_template,
                     "include_broll": include_broll,
+                    "audio_fade_in": audio_fade_in,
+                    "audio_fade_out": audio_fade_out,
+                    "processing_mode": processing_mode,
                 },
             )
         except Exception:

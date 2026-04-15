@@ -133,6 +133,9 @@ export default function TaskPage() {
   const [projectFontColor, setProjectFontColor] = useState("#FFFFFF");
   const [projectCaptionTemplate, setProjectCaptionTemplate] = useState("default");
   const [projectIncludeBroll, setProjectIncludeBroll] = useState(false);
+  const [projectAudioFadeIn, setProjectAudioFadeIn] = useState(false);
+  const [projectAudioFadeOut, setProjectAudioFadeOut] = useState(false);
+  const [projectProcessingMode, setProjectProcessingMode] = useState<'fast' | 'balanced' | 'quality'>('fast');
   const [isApplyingSettings, setIsApplyingSettings] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [availableFonts, setAvailableFonts] = useState<FontOption[]>([]);
@@ -186,6 +189,9 @@ export default function TaskPage() {
         setProjectFontColor(taskData.font_color || "#FFFFFF");
         setProjectCaptionTemplate(taskData.caption_template || "default");
         setProjectIncludeBroll(Boolean(taskData.include_broll));
+        setProjectAudioFadeIn(Boolean(taskData.audio_fade_in));
+        setProjectAudioFadeOut(Boolean(taskData.audio_fade_out));
+        setProjectProcessingMode(taskData.processing_mode || "fast");
 
         // Fetch clips if task is completed or processing (incremental clips)
         if (taskData.status === "completed" || taskData.status === "processing") {
@@ -560,6 +566,9 @@ export default function TaskPage() {
           font_color: normalizedColor,
           caption_template: projectCaptionTemplate,
           include_broll: projectIncludeBroll,
+          audio_fade_in: projectAudioFadeIn,
+          audio_fade_out: projectAudioFadeOut,
+          processing_mode: projectProcessingMode,
           apply_to_existing: true,
         }),
       });
@@ -900,7 +909,9 @@ export default function TaskPage() {
                 <AlertCircle className="w-12 h-12 mx-auto mb-2" />
                 <h2 className="text-xl font-semibold">Processing Failed</h2>
               </div>
-              <p className="text-gray-600 mb-4">There was an error processing your video. Please try again.</p>
+              <p className="text-gray-600 mb-4 whitespace-pre-wrap">
+                {task.progress_message || error || "There was an error processing your video. Please try again."}
+              </p>
               <Link href="/">
                 <Button>
                   <ArrowLeft className="w-4 h-4" />
@@ -1022,14 +1033,20 @@ export default function TaskPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">Caption Template</label>
+                    <label className="text-xs font-medium text-gray-500">Subtitle Style</label>
                     <Select value={projectCaptionTemplate} onValueChange={setProjectCaptionTemplate}>
                       <SelectTrigger>
                         <SelectValue>
-                          {availableTemplates.find((t) => t.id === projectCaptionTemplate)?.name || "Select style"}
+                          {projectCaptionTemplate === 'bilingual' ? 'Bilingual (Chinese/English)' : availableTemplates.find((t) => t.id === projectCaptionTemplate)?.name || "Select style"}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="bilingual">
+                          <div>
+                            <div className="font-medium">Bilingual (Chinese/English)</div>
+                            <div className="text-xs text-gray-500">Display Chinese and English subtitles simultaneously.</div>
+                          </div>
+                        </SelectItem>
                         {availableTemplates.map((template) => (
                           <SelectItem key={template.id} value={template.id}>
                             <div>
@@ -1051,6 +1068,58 @@ export default function TaskPage() {
                       className="rounded"
                     />
                     Include B-roll
+                  </label>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-gray-500">Processing Mode</label>
+                    <Select
+                      value={projectProcessingMode}
+                      onValueChange={(value) => setProjectProcessingMode(value as 'fast' | 'balanced' | 'quality')}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select processing mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fast">
+                          <div>
+                            <div className="font-medium">Fast</div>
+                            <div className="text-xs text-gray-500">Prioritize speed, generates fewer, highly relevant clips (up to 4).</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="balanced">
+                          <div>
+                            <div className="font-medium">Balanced</div>
+                            <div className="text-xs text-gray-500">Good balance of speed and quality, generates a moderate number of clips.</div>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="quality">
+                          <div>
+                            <div className="font-medium">Quality</div>
+                            <div className="text-xs text-gray-500">Prioritize clip quality and quantity, generates all relevant clips.</div>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={projectAudioFadeIn}
+                      onChange={(e) => setProjectAudioFadeIn(e.target.checked)}
+                      className="rounded"
+                    />
+                    Enable audio fade in
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={projectAudioFadeOut}
+                      onChange={(e) => setProjectAudioFadeOut(e.target.checked)}
+                      className="rounded"
+                    />
+                    Enable audio fade out
                   </label>
                 </div>
 
