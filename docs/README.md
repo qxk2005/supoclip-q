@@ -13,8 +13,8 @@ If you are new to the project, start here:
 ## Documentation Map
 
 - [Setup](./setup.md)
-  - Docker-first installation
-  - Local development commands
+  - Local installation (Postgres, Redis, backend, worker, frontend)
+  - Command reference
   - First-run checklist
   - Production-minded setup notes
 - [Configuration](./configuration.md)
@@ -58,7 +58,7 @@ The current repository snapshot includes:
 
 - `frontend/`: the main Next.js application
 - `backend/`: the FastAPI API and ARQ worker code
-- Root-level infrastructure files such as `docker-compose.yml`, `init.sql`, `.env.example`, and `start.sh`
+- Root-level files such as `init.sql`, `.env.example`, and `start.sh`
 
 Repository guidance still mentions a separate `waitlist/` app, but that directory is not present in this checkout. The documentation in this folder reflects the repository as it exists now.
 

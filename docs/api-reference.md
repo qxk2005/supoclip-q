@@ -235,7 +235,7 @@ If a route seems broken:
 2. Confirm the backend route exists.
 3. Confirm the user session is valid.
 4. Confirm the backend auth secret and origin configuration match your environment.
-5. Check browser network logs and backend container logs together.
+5. Check browser network logs and backend process logs together.
 
 ## Related Reading
 

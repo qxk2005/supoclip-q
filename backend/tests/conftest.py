@@ -54,7 +54,10 @@ async def initialized_database(test_database_url):
     if not test_database_url:
         pytest.skip("DATABASE_URL or TEST_DATABASE_URL must be set for backend tests")
 
-    engine = create_async_engine(test_database_url, poolclass=NullPool)
+    engine_kwargs: dict = {"poolclass": NullPool}
+    if "+asyncpg" in test_database_url:
+        engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+    engine = create_async_engine(test_database_url, **engine_kwargs)
     configure_database(engine=engine)
     await init_db()
     yield engine

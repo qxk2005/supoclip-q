@@ -8,17 +8,7 @@ SupoClip is an open-source alternative to OpusClip — an AI-powered video clipp
 
 ## Development Commands
 
-### Docker (recommended)
-
-```bash
-docker-compose up -d              # Start all 5 services
-docker-compose up -d --build      # Rebuild after changes
-docker-compose logs -f backend    # Debug backend
-docker-compose logs -f worker     # Debug video processing
-docker-compose down               # Stop all services
-```
-
-Services: Frontend (:3000), Backend API (:8000, docs at /docs), Worker (ARQ), PostgreSQL (:5432), Redis (:6379)
+Typical stack: Frontend (:3000), Backend API (:8000, docs at /docs), ARQ worker, PostgreSQL (:5432), Redis (:6379). Run Postgres and Redis yourself (local install, managed service, etc.).
 
 ### Backend (local)
 

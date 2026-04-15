@@ -4,7 +4,7 @@ AI-related functions for transcript analysis with enhanced precision and viralit
 
 import json
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal, Mapping
 import asyncio
 import logging
 import re
@@ -338,6 +338,72 @@ def _parse_json_payload_from_llm_text(text: str) -> Optional[Any]:
     return None
 
 
+def _safe_int_score(value: Any, default: int = 0) -> int:
+    """Coerce LLM numeric fields (may be str/float) to int; ignore dict/list."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return default
+        try:
+            return int(float(s))
+        except ValueError:
+            return default
+    return default
+
+
+def _virality_dict_from_segment_json(segment: Mapping[str, Any]) -> dict[str, int]:
+    """
+    Normalize virality fields from heterogeneous model JSON.
+
+    Some models emit a numeric ``virality_score``; others nest subscores under
+    ``virality_score`` as an object (instead of ``virality_breakdown``). Both are supported.
+    """
+    breakdown = segment.get("virality_breakdown")
+    if not isinstance(breakdown, dict):
+        breakdown = {}
+
+    raw_vs = segment.get("virality_score")
+    merged: dict[str, Any] = dict(breakdown)
+    if isinstance(raw_vs, dict):
+        merged = {**merged, **raw_vs}
+
+    hook = _safe_int_score(merged.get("hook_strength", merged.get("hook_score")))
+    engagement = _safe_int_score(
+        merged.get("engagement", merged.get("engagement_score"))
+    )
+    value = _safe_int_score(merged.get("value", merged.get("value_score")))
+    share = _safe_int_score(
+        merged.get("shareability", merged.get("shareability_score"))
+    )
+
+    hook = max(0, min(25, hook))
+    engagement = max(0, min(25, engagement))
+    value = max(0, min(25, value))
+    share = max(0, min(25, share))
+
+    total_score = hook + engagement + value + share
+    if total_score == 0:
+        t = _safe_int_score(merged.get("total", merged.get("total_score")))
+        if t:
+            total_score = max(0, min(100, t))
+    else:
+        total_score = max(0, min(100, total_score))
+
+    return {
+        "hook_score": hook,
+        "engagement_score": engagement,
+        "value_score": value,
+        "shareability_score": share,
+        "total_score": total_score,
+    }
+
+
 def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAnalysis]:
     """Build TranscriptAnalysis from parsed JSON (list of segments or full envelope dict)."""
     if parsed is None:
@@ -365,9 +431,7 @@ def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAna
     for segment in segments_raw:
         if not isinstance(segment, dict):
             continue
-        virality_breakdown = segment.get("virality_breakdown") or {}
-        if not isinstance(virality_breakdown, dict):
-            virality_breakdown = {}
+        v = _virality_dict_from_segment_json(segment)
         adapted_segment = {
             "start_time": segment.get("start_time"),
             "end_time": segment.get("end_time"),
@@ -375,11 +439,11 @@ def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAna
             "relevance_score": 0.9,
             "reasoning": segment.get("reasoning", "AI generated clip."),
             "virality": {
-                "hook_score": int(virality_breakdown.get("hook_strength", 0)),
-                "engagement_score": int(virality_breakdown.get("engagement", 0)),
-                "value_score": int(virality_breakdown.get("value", 0)),
-                "shareability_score": int(virality_breakdown.get("shareability", 0)),
-                "total_score": int(segment.get("virality_score", 0)),
+                "hook_score": v["hook_score"],
+                "engagement_score": v["engagement_score"],
+                "value_score": v["value_score"],
+                "shareability_score": v["shareability_score"],
+                "total_score": v["total_score"],
                 "hook_type": "none",
                 "virality_reasoning": segment.get("reasoning", "AI generated clip."),
             },

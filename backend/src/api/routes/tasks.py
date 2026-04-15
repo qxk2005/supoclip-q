@@ -49,6 +49,21 @@ def _normalize_font_family(value: Any, default: str = "TikTokSans-Regular") -> s
     return default
 
 
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    """Parse booleans from JSON, form strings, or numeric flags."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("1", "true", "yes", "on"):
+            return True
+        if v in ("0", "false", "no", "off", ""):
+            return False
+    return default
+
+
 def _get_user_id_from_headers(request: Request) -> str:
     """Get user ID. Monetization on: signed auth (same as create_task/billing_summary). Off: user_id or x-supoclip-user-id."""
     config = get_config()
@@ -130,15 +145,9 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     output_format = data.get("output_format", "vertical")
     if output_format not in {"vertical", "original"}:
         output_format = "vertical"
-    add_subtitles = data.get("add_subtitles", True)
-    if not isinstance(add_subtitles, bool):
-        add_subtitles = True
-    audio_fade_in = data.get("audio_fade_in", False)
-    audio_fade_out = data.get("audio_fade_out", False)
-    if not isinstance(audio_fade_in, bool):
-        audio_fade_in = False
-    if not isinstance(audio_fade_out, bool):
-        audio_fade_out = False
+    add_subtitles = _coerce_bool(data.get("add_subtitles", True), True)
+    audio_fade_in = _coerce_bool(data.get("audio_fade_in", False), False)
+    audio_fade_out = _coerce_bool(data.get("audio_fade_out", False), False)
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -187,6 +196,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
                 "output_format": output_format,
                 "add_subtitles": add_subtitles,
                 "language": language,
+                "audio_fade_in": audio_fade_in,
+                "audio_fade_out": audio_fade_out,
             },
         )
 
@@ -607,7 +618,7 @@ async def regenerate_clip(
         )
 
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 class TaskSettingsUpdate(BaseModel):
     font_family: str
@@ -619,6 +630,11 @@ class TaskSettingsUpdate(BaseModel):
     audio_fade_out: bool = False
     processing_mode: Literal['fast', 'balanced', 'quality']
     apply_to_existing: bool
+
+    @field_validator("include_broll", "audio_fade_in", "audio_fade_out", "apply_to_existing", mode="before")
+    @classmethod
+    def _coerce_setting_bools(cls, value: Any) -> bool:
+        return _coerce_bool(value, False)
 
 @router.post("/{task_id}/settings")
 async def apply_task_settings(
@@ -827,6 +843,8 @@ async def resume_task(
                 "output_format": output_format,
                 "add_subtitles": add_subtitles,
                 "language": task.get("language") or "auto",
+                "audio_fade_in": bool(task.get("audio_fade_in", False)),
+                "audio_fade_out": bool(task.get("audio_fade_out", False)),
             },
         )
 

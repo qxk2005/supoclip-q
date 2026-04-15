@@ -114,7 +114,6 @@ Current top-level layout:
 
 - `backend/`
 - `frontend/`
-- `docker-compose.yml`
 - `init.sql`
 - `.env.example`
 - `start.sh`
@@ -387,15 +386,14 @@ Stores reusable processing artifacts to avoid repeating expensive work when poss
 
 ## Storage Model
 
-In Docker, the system uses named volumes for:
+Persistent data lives where you configure it:
 
-- uploads
-- clips
-- Redis data
-- PostgreSQL data
-- YouTube auth state
+- PostgreSQL — task, user, clip metadata (via `DATABASE_URL`)  
+- Redis — job queue and progress pub/sub  
+- Filesystem — uploads and generated clips under `TEMP_DIR` (and related paths in config)  
+- Optional on-disk YouTube auth rotation state when that feature is used  
 
-Fonts and transitions are file-based assets mounted from the repository.
+Fonts and transitions are file-based assets under `backend/fonts/` and `backend/transitions/`.
 
 ## Operational Characteristics
 

@@ -63,19 +63,7 @@ fi
 echo "Update detected: \$LOCAL_COMMIT -> \$REMOTE_COMMIT"
 git pull --ff-only --quiet
 
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-  COMPOSE_CMD="docker-compose"
-else
-  echo "Neither 'docker compose' nor 'docker-compose' is available"
-  exit 1
-fi
-
-echo "Restarting Docker services"
-\$COMPOSE_CMD down
-\$COMPOSE_CMD up -d --build
-
+echo "Update pulled. Restart your local backend, worker, and frontend processes manually."
 echo "Update complete"
 EOF
 

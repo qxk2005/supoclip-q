@@ -14,22 +14,15 @@ Current repository structure:
   - Next.js app
   - App Router pages, API routes, auth, Prisma schema, UI components
 - Root files
-  - `docker-compose.yml`
   - `init.sql`
   - `.env.example`
   - `start.sh`
 
 Note: older repo guidance references a `waitlist/` app, but it is not present in this checkout.
 
-## Main Commands
+## Main commands
 
-## Full stack with Docker
-
-```bash
-docker-compose up -d --build
-docker-compose logs -f
-docker-compose down
-```
+Run PostgreSQL and Redis, apply `init.sql`, then start backend, worker, and frontend (see [Setup](./setup.md)).
 
 ## Frontend
 
@@ -246,11 +239,9 @@ cd frontend && npm install && npm run test:coverage
 cd frontend && npm run test:e2e
 ```
 
-### Local Test Environment
+### Local test environment
 
-- Start PostgreSQL and Redis locally before running integration or e2e flows.
-- `docker-compose up -d postgres redis` is enough for backend and frontend test runs.
-- `docker-compose up -d` is the simplest full-stack option when you also want manual smoke testing.
+- Start PostgreSQL and Redis locally (or point `DATABASE_URL` / `REDIS_*` at running instances) before integration or e2e runs.
 
 Useful backend test env vars:
 
@@ -270,26 +261,20 @@ BETTER_AUTH_SECRET=supoclip_better_auth_test_secret
 - GitHub Actions runs separate `backend`, `frontend`, and `e2e` jobs with Postgres and Redis service containers.
 - Playwright failures retain traces, screenshots, and videos for debugging.
 
-### Recommended Manual Smoke Test
+### Recommended manual smoke test
 
 Automated tests cover the main seams, but manual smoke testing is still useful for high-risk media flows:
 
-1. Start the stack.
+1. Start Postgres, Redis, backend, worker, and frontend.
 2. Sign in.
 3. Create a task from a YouTube URL.
 4. Confirm progress updates arrive.
 5. Confirm clips are generated.
 6. Confirm clip editing and export actions still work.
 
-## Helpful Logs
+## Helpful logs
 
-```bash
-docker-compose logs -f backend
-docker-compose logs -f worker
-docker-compose logs -f frontend
-docker-compose logs -f postgres
-docker-compose logs -f redis
-```
+Watch the terminals where `uvicorn`, `arq`, and `npm run dev` run, or redirect output to files if you prefer.
 
 ## Codebase Conventions
 

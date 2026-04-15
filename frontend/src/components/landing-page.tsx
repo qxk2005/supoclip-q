@@ -773,7 +773,7 @@ export default function LandingPage() {
             <Card className="py-0 gap-0">
               <CardContent className="p-6 md:p-8">
                 <p className="text-xs font-medium text-muted-foreground mb-3">
-                  约 30 秒本地跑起来：
+                  本地开发：配置 Postgres / Redis 后按脚本提示启动三个进程：
                 </p>
                 <div className="bg-primary text-primary-foreground rounded-lg p-5 font-mono text-sm leading-loose overflow-x-auto">
                   <div>
@@ -789,8 +789,10 @@ export default function LandingPage() {
                     <span className="opacity-40">supoclip</span>
                   </div>
                   <div>
-                    <span className="opacity-50">$</span>{" "}
-                    docker-compose up -d
+                    <span className="opacity-50">$</span> cp .env.example .env
+                  </div>
+                  <div>
+                    <span className="opacity-50">$</span> ./start.sh
                   </div>
                 </div>
 

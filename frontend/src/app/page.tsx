@@ -92,6 +92,9 @@ const getYouTubeThumbnailUrl = (value: string): string | null => {
   return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
 };
 
+const PREF_AUDIO_FADE_IN = "supoclip_pref_audio_fade_in";
+const PREF_AUDIO_FADE_OUT = "supoclip_pref_audio_fade_out";
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -128,8 +131,22 @@ export default function Home() {
   const [brollAvailable, setBrollAvailable] = useState(false);
   const [outputFormat, setOutputFormat] = useState<"vertical" | "original">("vertical");
   const [addSubtitles, setAddSubtitles] = useState(true);
-  const [audioFadeIn, setAudioFadeIn] = useState(false);
-  const [audioFadeOut, setAudioFadeOut] = useState(false);
+  const [audioFadeIn, setAudioFadeIn] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(PREF_AUDIO_FADE_IN) === "1";
+  });
+  const [audioFadeOut, setAudioFadeOut] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(PREF_AUDIO_FADE_OUT) === "1";
+  });
+
+  useEffect(() => {
+    localStorage.setItem(PREF_AUDIO_FADE_IN, audioFadeIn ? "1" : "0");
+  }, [audioFadeIn]);
+
+  useEffect(() => {
+    localStorage.setItem(PREF_AUDIO_FADE_OUT, audioFadeOut ? "1" : "0");
+  }, [audioFadeOut]);
 
   // Latest task state
   const [latestTask, setLatestTask] = useState<LatestTask | null>(null);

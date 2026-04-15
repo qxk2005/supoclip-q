@@ -53,8 +53,8 @@ backend/src/
 The refactoring adds `progress` and `progress_message` fields to the tasks table.
 
 ```bash
-# Apply migration to existing database
-docker exec -i supoclip-postgres psql -U postgres -d supoclip < backend/migrations/001_add_progress_fields.sql
+# Apply migration to existing database (use your connection string)
+psql "$DATABASE_URL" -f backend/migrations/001_add_progress_fields.sql
 ```
 
 For fresh installs, the updated `init.sql` already includes these fields.
@@ -71,67 +71,25 @@ uv sync
 uv pip install arq>=0.26.0 redis>=5.0.0
 ```
 
-### Step 3: Update Docker Configuration
+### Step 3: Run API and worker locally
 
-#### Option A: Update Dockerfile
-
-The Dockerfile will automatically pick up new dependencies from `pyproject.toml`:
+Use the refactored entry point and a separate ARQ worker process:
 
 ```bash
-docker-compose build backend
+cd backend
+source .venv/bin/activate
+uvicorn src.main_refactored:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### Option B: Add Worker Service (Recommended)
-
-Edit `docker-compose.yml` to add a separate worker service:
-
-```yaml
-services:
-  supoclip-worker:
-    build: ./backend
-    command: [".venv/bin/arq", "src.workers.tasks.WorkerSettings"]
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/supoclip
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - ASSEMBLY_AI_API_KEY=${ASSEMBLY_AI_API_KEY}
-      - LLM=${LLM}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - TEMP_DIR=/tmp
-    volumes:
-      - ./backend:/app
-      - /tmp:/tmp
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-```
-
-### Step 4: Switch to Refactored Main
-
-Update `Dockerfile` CMD or docker-compose command:
-
-```dockerfile
-# Change from:
-CMD [".venv/bin/uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
-# To:
-CMD [".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-Or in `docker-compose.yml`:
-
-```yaml
-supoclip-backend:
-  command: [".venv/bin/uvicorn", "src.main_refactored:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### Step 5: Restart Services
+Second terminal:
 
 ```bash
-docker-compose down
-docker-compose up -d --build
+cd backend
+source .venv/bin/activate
+arq src.workers.tasks.WorkerSettings
 ```
+
+Ensure `DATABASE_URL`, `REDIS_HOST`, and API keys in `.env` match your environment.
 
 ## 🧪 Testing the Refactored System
 
@@ -212,14 +170,13 @@ curl http://localhost:8000/tasks/{task_id}/clips
 
 ## 📊 Monitoring Workers
 
-### View Worker Logs
+### View worker / queue status
+
+- Watch the terminal where `arq src.workers.tasks.WorkerSettings` runs.  
+- Inspect Redis locally, for example:
 
 ```bash
-# If using separate worker service:
-docker-compose logs -f supoclip-worker
-
-# Or check Redis queue status:
-docker exec -it supoclip-redis redis-cli
+redis-cli -h "${REDIS_HOST:-127.0.0.1}" -p "${REDIS_PORT:-6379}"
 > KEYS arq:*
 > LLEN arq:queue
 ```
@@ -229,7 +186,7 @@ docker exec -it supoclip-redis redis-cli
 The arq queue stores job status in Redis. You can inspect with:
 
 ```bash
-docker exec -it supoclip-redis redis-cli
+redis-cli -h "${REDIS_HOST:-127.0.0.1}" -p "${REDIS_PORT:-6379}"
 > KEYS arq:job:*
 > GET arq:job:{job_id}
 ```
@@ -238,12 +195,12 @@ docker exec -it supoclip-redis redis-cli
 
 If issues arise, you can rollback:
 
-### Option 1: Switch Back to Old Main
+### Option 1: Switch back to old main
 
-```yaml
-# docker-compose.yml
-supoclip-backend:
-  command: [".venv/bin/uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+Run the legacy entry point:
+
+```bash
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Option 2: Keep Both Running
@@ -272,23 +229,20 @@ You can run both versions simultaneously on different ports for gradual migratio
 
 ### "Connection refused" to Redis
 
-Check Redis is running:
+Check Redis is running and reachable from `REDIS_HOST` / `REDIS_PORT`:
+
 ```bash
-docker-compose ps redis
-docker-compose logs redis
+redis-cli -h "${REDIS_HOST:-127.0.0.1}" -p "${REDIS_PORT:-6379}" ping
 ```
 
 ### Worker not processing jobs
 
-1. Check worker is running:
-```bash
-docker-compose ps supoclip-worker
-docker-compose logs supoclip-worker
-```
+1. Confirm the ARQ worker process is running (`arq src.workers.tasks.WorkerSettings`).  
+2. Check Redis from Python (adjust host to match `.env`):
 
-2. Check Redis connection:
 ```bash
-docker exec supoclip-backend .venv/bin/python -c "import redis; r=redis.Redis(host='redis'); print(r.ping())"
+cd backend && source .venv/bin/activate
+python -c "import os,redis; r=redis.Redis(host=os.environ.get('REDIS_HOST','127.0.0.1'), port=int(os.environ.get('REDIS_PORT',6379))); print(r.ping())"
 ```
 
 ### Database migration errors

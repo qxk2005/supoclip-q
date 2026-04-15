@@ -6,19 +6,16 @@ This repository is a monorepo with three apps:
 - `frontend/`: main Next.js app (`src/app`, `src/components`, `src/lib`, `prisma/`).
 - `waitlist/`: separate Next.js marketing/waitlist app.
 
-Infra and bootstrap files live at the root: `docker-compose.yml`, `init.sql`, `.env.example`, and `start.sh`.
+Infra and bootstrap files live at the root: `init.sql`, `.env.example`, and `start.sh` (prints a local run checklist).
 
 ## Build, Test, and Development Commands
-Use Docker for full-stack development:
-- `docker-compose up -d --build`: start frontend, backend, worker, Postgres, and Redis.
-- `docker-compose logs -f`: stream service logs.
-- `docker-compose down`: stop everything.
+Run PostgreSQL and Redis locally (or remotely), apply `init.sql` / `backend/migrations/*.sql` as needed, then:
 
 Local app commands:
 - `cd frontend && npm run dev` (or `waitlist`): run Next.js in dev mode.
 - `cd frontend && npm run build && npm run start`: production build + serve.
 - `cd frontend && npm run lint` (same in `waitlist`): run ESLint.
-- `cd backend && uv sync && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000`: run API locally.
+- `cd backend && uv sync && uvicorn src.main_refactored:app --reload --host 0.0.0.0 --port 8000`: run API locally.
 - `cd backend && .venv/bin/arq src.workers.tasks.WorkerSettings`: run the worker.
 
 ## Coding Style & Naming Conventions
@@ -30,7 +27,7 @@ Local app commands:
 ## Testing Guidelines
 There is no mature automated test suite yet. Treat linting plus manual verification as the current baseline:
 - Run `npm run lint` in both Next.js apps.
-- Smoke test core flows with `docker-compose` (create task, process clips, view task page).
+- Smoke test core flows with API + worker + frontend running (create task, process clips, view task page).
 
 When adding tests, place them near code or under `tests/` with clear names (`test_*.py`, `*.test.ts[x]`).
 

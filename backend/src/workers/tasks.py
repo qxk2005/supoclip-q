@@ -72,6 +72,16 @@ async def process_video_task(
                 should_cancel=should_cancel,
                 clip_ready_callback=clip_ready_callback,
                 cleanup_settings=task_params.get("cleanup_settings"),
+                job_audio_fade_in=(
+                    task_params["audio_fade_in"]
+                    if "audio_fade_in" in task_params
+                    else None
+                ),
+                job_audio_fade_out=(
+                    task_params["audio_fade_out"]
+                    if "audio_fade_out" in task_params
+                    else None
+                ),
             )
 
 

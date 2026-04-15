@@ -31,14 +31,19 @@ class Base(DeclarativeBase):
 
 
 def _build_engine(database_url: str) -> AsyncEngine:
-    return create_async_engine(
-        database_url,
-        echo=False,
-        pool_size=10,
-        max_overflow=20,
-        pool_pre_ping=True,
-        pool_recycle=3600,
-    )
+    # asyncpg caches prepared statements per connection; DDL/migrations invalidate
+    # those plans and can raise InvalidCachedStatementError. Disabling the cache
+    # avoids stale plans (small cost vs. worker/API reliability).
+    engine_kwargs: dict = {
+        "echo": False,
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_pre_ping": True,
+        "pool_recycle": 3600,
+    }
+    if "+asyncpg" in database_url:
+        engine_kwargs["connect_args"] = {"statement_cache_size": 0}
+    return create_async_engine(database_url, **engine_kwargs)
 
 
 def get_database_url() -> str:

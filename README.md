@@ -52,7 +52,7 @@ SupoClip provides the same core functionality without the financial burden:
 
 ### Prerequisites
 
-- Docker and Docker Compose
+- PostgreSQL 15+, Redis, and ffmpeg available on your machine (or reachable via `DATABASE_URL` / `REDIS_*`)
 - An AssemblyAI API key (for transcription) - [Get one here](https://www.assemblyai.com/)
 - An LLM provider for AI analysis - OpenAI, Google, Anthropic, or Ollama
 
@@ -106,27 +106,26 @@ BETTER_AUTH_SECRET=change_this_in_production
 # YOUTUBE_DATA_API_KEY=your_youtube_data_api_key
 ```
 
-### 2. Start the Services
+### 2. Database schema
+
+From the repo root (adjust connection string to match your Postgres):
 
 ```bash
-docker-compose up -d
+psql "$DATABASE_URL" -f init.sql
+# If upgrading an older database, also run SQL files under backend/migrations/
 ```
 
-This starts:
+### 3. Start the app (three terminals)
+
+```bash
+./start.sh   # prints a checklist; then run the commands it shows
+```
+
+You should have:
+
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000 (docs at /docs)
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379
-
-### 3. Wait for Initialization
-
-First-time startup takes a few minutes. Check progress with:
-
-```bash
-docker-compose logs -f
-```
-
-Wait until you see health checks passing for all services.
+- **Worker**: `arq src.workers.tasks.WorkerSettings` from `backend/` (required for jobs to finish)
 
 ### 4. Access the App
 
@@ -144,11 +143,11 @@ If you enable DataFast, also verify that:
 - Default is `google-gla:gemini-3-flash-preview` which requires `GOOGLE_API_KEY`
 - If using `openai:gpt-5.2`, you MUST set `OPENAI_API_KEY`
 - If using `ollama:*`, run Ollama and (optionally) set `OLLAMA_BASE_URL`
-- Rebuild after changing `.env`: `docker-compose up -d --build`
+- Restart the backend process after changing `.env`
 
 **Videos stay queued / never process:**
-- Check worker logs: `docker-compose logs -f worker`
-- Ensure Redis is healthy: `docker-compose logs redis`
+- Confirm the ARQ worker is running (`arq src.workers.tasks.WorkerSettings` in `backend/`)
+- Confirm Redis is reachable (`REDIS_HOST` / `REDIS_PORT`)
 - Verify API keys are correct
 
 **YouTube titles or duration lookup is failing:**
@@ -165,12 +164,10 @@ If you enable DataFast, also verify that:
 - View aggregate metrics: `GET /tasks/metrics/performance`
 
 **Prisma errors on Windows:**
-- Run `docker-compose down -v` to clear volumes
-- Run `docker-compose up -d --build` to rebuild
+- Reset the local Postgres database or re-run migrations as needed for your environment
 
 **Frontend shows database errors:**
-- Wait for PostgreSQL to fully initialize (check logs)
-- The database is automatically created on first run
+- Confirm PostgreSQL is running and `DATABASE_URL` matches your schema (`init.sql` applied)
 
 **Font picker is empty / cannot select or upload fonts:**
 - Add fonts to `backend/fonts/` – see [backend/fonts/README.md](backend/fonts/README.md) for TikTok Sans and custom fonts
@@ -209,7 +206,7 @@ cd frontend && npm install && npm run test:coverage
 cd frontend && npm run test:e2e
 ```
 
-Local test runs expect PostgreSQL and Redis to be available. The easiest path is to start the stack with `docker-compose up -d`, then run the commands above. CI runs the same layers in GitHub Actions with Postgres and Redis service containers.
+Local test runs expect PostgreSQL and Redis to be available on `localhost` (or set `DATABASE_URL` / `REDIS_*` accordingly). CI uses GitHub Actions service containers for Postgres and Redis.
 
 ## Documentation
 
@@ -241,7 +238,7 @@ Required env vars for this flow:
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_ID`
 
-### Local Development (Without Docker)
+### Local development
 
 See [CLAUDE.md](CLAUDE.md) for detailed development instructions.
 

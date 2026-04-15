@@ -13,6 +13,7 @@ import json
 
 import cv2
 from moviepy import VideoFileClip, CompositeVideoClip, TextClip, ColorClip
+import moviepy.audio.fx as afx
 from moviepy.video.fx import CrossFadeIn, CrossFadeOut, FadeIn, FadeOut
 from faster_whisper import WhisperModel
 import srt
@@ -1274,7 +1275,8 @@ def create_optimized_clip(
         keep_original = output_format == "original"
         logger.info(
             f"Creating clip: {start_time:.1f}s - {end_time:.1f}s ({duration:.1f}s) "
-            f"subtitles={add_subtitles} template '{caption_template}' format={'original' if keep_original else 'vertical'}"
+            f"subtitles={add_subtitles} template '{caption_template}' format={'original' if keep_original else 'vertical'} "
+            f"audio_fade_in={audio_fade_in} audio_fade_out={audio_fade_out}"
         )
 
         # Fast path: no subtitles, no fades, original format = ffmpeg stream copy
@@ -1308,14 +1310,6 @@ def create_optimized_clip(
         end_time = min(end_time + 0.5, video.duration)
         clip = video.subclipped(start_time, end_time)
 
-        # Apply audio fades if requested (longer ramps are easier to hear on short clips)
-        if clip.audio:
-            fade_s = min(2.5, max(0.65, duration * 0.28))
-            if audio_fade_in:
-                clip.audio = clip.audio.audio_fadein(fade_s)
-            if audio_fade_out:
-                clip.audio = clip.audio.audio_fadeout(fade_s)
-
         if keep_original:
             # No face detection, no crop, no resize - use trimmed clip as-is
             processed_clip = clip
@@ -1334,6 +1328,21 @@ def create_optimized_clip(
             )
             target_width, target_height = round_to_even(new_width), round_to_even(new_height)
             processed_clip = cropped_clip
+
+        # Apply fades on the same clip we encode / attach to CompositeVideoClip.
+        # Fading `clip` before `cropped()` can be lost: the cropped clip may not keep that audio chain.
+        fade_s = min(2.5, max(0.65, duration * 0.28))
+        if processed_clip.audio is not None and (audio_fade_in or audio_fade_out):
+            audio_effects = []
+            if audio_fade_in:
+                audio_effects.append(afx.AudioFadeIn(fade_s))
+            if audio_fade_out:
+                audio_effects.append(afx.AudioFadeOut(fade_s))
+            aud = processed_clip.audio.with_effects(audio_effects)
+            processed_clip = processed_clip.with_audio(aud)
+            logger.info(
+                f"Applied audio fades (fade_s={fade_s:.2f}s fade_in={audio_fade_in} fade_out={audio_fade_out})"
+            )
 
         # Add faster-whisper subtitles with template support
         final_clips = [processed_clip]
@@ -1356,10 +1365,15 @@ def create_optimized_clip(
         else:
             logger.info("Skipping subtitle creation because add_subtitles is False.")
 
-        # Compose and encode
-        final_clip = (
-            CompositeVideoClip(final_clips) if len(final_clips) > 1 else processed_clip
-        )
+        # Compose and encode — MoviePy 2 CompositeVideoClip may not keep the base layer's audio
+        if len(final_clips) > 1:
+            composite = CompositeVideoClip(final_clips)
+            if processed_clip.audio is not None:
+                final_clip = composite.with_audio(processed_clip.audio)
+            else:
+                final_clip = composite
+        else:
+            final_clip = processed_clip
         source_fps = clip.fps if clip.fps and clip.fps > 0 else 30
 
         processor = VideoProcessor(font_family, font_size, font_color)
@@ -1401,6 +1415,9 @@ def create_clips_from_segments(
     caption_template: str = "default",
     output_format: str = "vertical",
     add_subtitles: bool = True,
+    audio_fade_in: bool = False,
+    audio_fade_out: bool = False,
+    processing_mode: str = "fast",
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments with template support."""
     logger.info(
@@ -1445,6 +1462,9 @@ def create_clips_from_segments(
                 font_color,
                 caption_template,
                 output_format,
+                audio_fade_in,
+                audio_fade_out,
+                processing_mode,
             )
 
             if success:
@@ -1600,6 +1620,9 @@ def create_clips_with_transitions(
     caption_template: str = "default",
     output_format: str = "vertical",
     add_subtitles: bool = True,
+    audio_fade_in: bool = False,
+    audio_fade_out: bool = False,
+    processing_mode: str = "fast",
 ) -> List[Dict[str, Any]]:
     """Create standalone video clips without inter-clip transitions.
 
@@ -1621,6 +1644,9 @@ def create_clips_with_transitions(
         caption_template,
         output_format,
         add_subtitles,
+        audio_fade_in,
+        audio_fade_out,
+        processing_mode,
     )
 
 

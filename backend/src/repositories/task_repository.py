@@ -69,7 +69,12 @@ class TaskRepository:
                     "audio_fade_out": audio_fade_out,
                 },
             )
-        except Exception:
+        except Exception as first_err:
+            logger.warning(
+                "Full task insert failed (%s); using minimal insert for %s",
+                first_err,
+                task_id,
+            )
             await db.rollback()
             result = await db.execute(
                 text("""
@@ -97,6 +102,44 @@ class TaskRepository:
         task_id = result.scalar()
         if not task_id:
             raise RuntimeError("Failed to create task: no ID returned")
+
+        # Minimal INSERT omits extended columns; keep DB in sync with API (audio fade, etc.).
+        try:
+            await db.execute(
+                text(
+                    """
+                    UPDATE tasks
+                    SET caption_template = :caption_template,
+                        include_broll = :include_broll,
+                        processing_mode = :processing_mode,
+                        chunk_size = :chunk_size,
+                        language = :language,
+                        audio_fade_in = :audio_fade_in,
+                        audio_fade_out = :audio_fade_out,
+                        updated_at = NOW()
+                    WHERE id = :task_id
+                    """
+                ),
+                {
+                    "task_id": task_id,
+                    "caption_template": caption_template,
+                    "include_broll": include_broll,
+                    "processing_mode": processing_mode,
+                    "chunk_size": chunk_size,
+                    "language": language,
+                    "audio_fade_in": audio_fade_in,
+                    "audio_fade_out": audio_fade_out,
+                },
+            )
+            await db.commit()
+        except Exception as ext_err:
+            logger.warning(
+                "Could not persist extended task fields for %s: %s",
+                task_id,
+                ext_err,
+            )
+            await db.rollback()
+
         logger.info(f"Created task {task_id} for user {user_id}")
         return str(task_id)
 
@@ -136,7 +179,6 @@ class TaskRepository:
             "include_broll": getattr(row, "include_broll", False),
             "audio_fade_in": getattr(row, "audio_fade_in", False),
             "audio_fade_out": getattr(row, "audio_fade_out", False),
-            "processing_mode": getattr(row, "processing_mode", "fast"),
             "processing_mode": getattr(row, "processing_mode", "fast"),
             "chunk_size": getattr(row, "chunk_size", 15000),
             "language": getattr(row, "language", "auto"),
@@ -296,6 +338,38 @@ class TaskRepository:
                 },
             )
         await db.commit()
+
+    @staticmethod
+    async def update_task_audio_fade(
+        db: AsyncSession,
+        task_id: str,
+        audio_fade_in: bool,
+        audio_fade_out: bool,
+    ) -> None:
+        """Persist audio fade flags (columns may be missing on very old DBs)."""
+        try:
+            await db.execute(
+                text(
+                    """
+                    UPDATE tasks
+                    SET audio_fade_in = :audio_fade_in,
+                        audio_fade_out = :audio_fade_out,
+                        updated_at = NOW()
+                    WHERE id = :task_id
+                    """
+                ),
+                {
+                    "task_id": task_id,
+                    "audio_fade_in": audio_fade_in,
+                    "audio_fade_out": audio_fade_out,
+                },
+            )
+            await db.commit()
+        except Exception as e:
+            logger.warning(
+                "update_task_audio_fade skipped for %s: %s", task_id, e
+            )
+            await db.rollback()
 
     @staticmethod
     async def update_task_status(

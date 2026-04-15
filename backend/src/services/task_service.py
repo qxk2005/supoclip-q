@@ -147,6 +147,8 @@ class TaskService:
         clip_ready_callback: Optional[Callable] = None,
         cleanup_settings: Dict[str, Any] | None = None,
         language: str = "auto",
+        job_audio_fade_in: Optional[bool] = None,
+        job_audio_fade_out: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Process a task: download video, analyze, create clips.
@@ -234,8 +236,29 @@ class TaskService:
             if not task_details:
                 logger.error(f"Task details not found for task_id: {task_id}")
                 raise ValueError(f"Task details not found for task_id: {task_id}")
-            audio_fade_in = bool(task_details.get("audio_fade_in", False))
-            audio_fade_out = bool(task_details.get("audio_fade_out", False))
+            db_fade_in = bool(task_details.get("audio_fade_in", False))
+            db_fade_out = bool(task_details.get("audio_fade_out", False))
+            audio_fade_in = db_fade_in
+            audio_fade_out = db_fade_out
+            if job_audio_fade_in is not None:
+                audio_fade_in = audio_fade_in or bool(job_audio_fade_in)
+            if job_audio_fade_out is not None:
+                audio_fade_out = audio_fade_out or bool(job_audio_fade_out)
+            if (audio_fade_in != db_fade_in) or (audio_fade_out != db_fade_out):
+                logger.info(
+                    "Merged worker audio fade flags into task %s: db in/out=%s/%s "
+                    "→ effective in/out=%s/%s (job in/out=%s/%s)",
+                    task_id,
+                    db_fade_in,
+                    db_fade_out,
+                    audio_fade_in,
+                    audio_fade_out,
+                    job_audio_fade_in,
+                    job_audio_fade_out,
+                )
+            await self.task_repo.update_task_audio_fade(
+                self.db, task_id, audio_fade_in, audio_fade_out
+            )
 
             await self.cache_repo.upsert_cache(
                 self.db,
@@ -260,6 +283,16 @@ class TaskService:
                 # Check cancellation
                 if should_cancel and await should_cancel():
                     raise Exception("Task cancelled")
+
+                # Latest task row (user may update audio fades / style while earlier clips render)
+                td_refresh = await self.task_repo.get_task_by_id(self.db, task_id)
+                if td_refresh:
+                    audio_fade_in = bool(td_refresh.get("audio_fade_in", False))
+                    audio_fade_out = bool(td_refresh.get("audio_fade_out", False))
+                if job_audio_fade_in is not None:
+                    audio_fade_in = audio_fade_in or bool(job_audio_fade_in)
+                if job_audio_fade_out is not None:
+                    audio_fade_out = audio_fade_out or bool(job_audio_fade_out)
 
                 # Update progress: 70-95% spread across clips
                 clip_progress = 70 + int(
@@ -365,6 +398,9 @@ class TaskService:
 
         except Exception as e:
             logger.error(f"Error processing task {task_id}: {e}")
+            # Any DB error may have put the session transaction in "aborted"; clear it
+            # before writing error/cancelled status (avoids InFailedSQLTransactionError).
+            await self.db.rollback()
             if str(e) == "Task cancelled":
                 await self.task_repo.update_task_status(
                     self.db,
@@ -473,7 +509,7 @@ class TaskService:
                 progress=0,
                 progress_message=(
                     "Task timed out while waiting in queue. "
-                    "Ensure the worker service is running and healthy (docker-compose logs -f worker)."
+                    "Ensure the ARQ worker is running (e.g. `arq src.workers.tasks.WorkerSettings` from backend/)."
                 ),
             )
             task = await self.task_repo.get_task_by_id(self.db, task_id)
