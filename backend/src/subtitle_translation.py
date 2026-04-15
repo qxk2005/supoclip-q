@@ -4,6 +4,7 @@ Translate English subtitle phrases to Simplified Chinese for bilingual captions.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -86,17 +87,75 @@ def clip_segment_text_should_fill_zh_translation(text: str) -> bool:
     """
     Heuristic: English-like clip body that should get a zh-CN translation in the UI.
     Skips when the text already contains CJK characters.
+
+    The previous latin/letters ratio rejected many real transcripts (heavy digits e.g. 5G/2024,
+    punctuation, or accented Latin letters), so we only require a minimum count of ASCII letters.
     """
     t = (text or "").strip()
-    if len(t) < 12:
+    if len(t) < 8:
         return False
     if re.search(r"[\u3000-\u9fff\u3400-\u4dbf\uf900-\ufaff]", t):
         return False
-    letters = sum(1 for c in t if c.isalpha())
-    if letters < 12:
-        return False
     latin = sum(1 for c in t if ("a" <= c <= "z") or ("A" <= c <= "Z"))
-    return latin / letters >= 0.82
+    return latin >= 8
+
+
+def _coerce_phrase_batch_from_llm_output(out: Any, n: int) -> Optional[List[str]]:
+    """Build per-index zh strings from structured output or raw JSON/text."""
+    if isinstance(out, PhraseTranslationBatch) and out.items:
+        by_i: Dict[int, str] = {}
+        for it in out.items:
+            if 0 <= it.i < n:
+                by_i[it.i] = (it.zh or "").strip()
+        return [by_i.get(i, "") for i in range(n)]
+
+    if not isinstance(out, str) or not out.strip():
+        return None
+
+    raw = out.strip()
+    for fence in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", raw, re.IGNORECASE):
+        chunk = fence.group(1).strip()
+        if chunk:
+            raw = chunk
+            break
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"\{\s*\"items\"\s*:\s*\[", raw)
+        if m is not None:
+            try:
+                data, _ = json.JSONDecoder().raw_decode(raw, m.start())
+            except json.JSONDecodeError:
+                return None
+        else:
+            return None
+
+    items_raw: Any = None
+    if isinstance(data, dict):
+        items_raw = data.get("items")
+    elif isinstance(data, list):
+        items_raw = data
+    if not isinstance(items_raw, list):
+        return None
+
+    by_i: Dict[int, str] = {}
+    for item in items_raw:
+        if not isinstance(item, dict):
+            continue
+        idx = item.get("i")
+        zh = (item.get("zh") or "").strip()
+        if isinstance(idx, bool) or idx is None:
+            continue
+        try:
+            ii = int(idx)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= ii < n:
+            by_i[ii] = zh
+    if not by_i:
+        return None
+    return [by_i.get(i, "") for i in range(n)]
 
 
 async def translate_clip_transcript_batch(texts: List[str]) -> List[str]:
@@ -124,14 +183,23 @@ async def translate_clip_transcript_batch(texts: List[str]) -> List[str]:
     try:
         result = await agent.run(user_msg)
         out = getattr(result, "output", None)
-        if not isinstance(out, PhraseTranslationBatch) or not out.items:
-            logger.warning("Unexpected clip body translation output type: %s", type(out))
-            return [""] * n
-        by_i: Dict[int, str] = {}
-        for it in out.items:
-            if 0 <= it.i < n:
-                by_i[it.i] = (it.zh or "").strip()
-        return [by_i.get(i, "") for i in range(n)]
+        coerced = _coerce_phrase_batch_from_llm_output(out, n)
+        if coerced is not None:
+            if any(z.strip() for z in coerced):
+                return coerced
+            logger.warning(
+                "Clip body translation parsed but all zh empty (n=%s); output_type=%s",
+                n,
+                type(out).__name__,
+            )
+            return coerced
+        logger.warning(
+            "Could not parse clip body translation output (n=%s); output_type=%s preview=%r",
+            n,
+            type(out).__name__,
+            (out if isinstance(out, str) else str(out))[:500],
+        )
+        return [""] * n
     except Exception as e:
         logger.error("Clip body translation batch failed: %s", e, exc_info=True)
         return [""] * n
@@ -162,6 +230,22 @@ async def fill_missing_segment_text_translations_zh(
         texts.append(raw)
 
     if not texts:
+        sample = next(
+            (
+                (seg.get("text") or "")[:160]
+                for seg in segments
+                if isinstance(seg, dict)
+                and not (seg.get("text_translation") or seg.get("text_zh") or "").strip()
+                and (seg.get("text") or "").strip()
+            ),
+            "",
+        )
+        logger.info(
+            "fill_missing_segment_text_translations_zh: no segments qualified for zh "
+            "(count=%s). First untranslated text preview: %r",
+            len(segments),
+            sample,
+        )
         return
 
     batch_size = 4
@@ -169,6 +253,13 @@ async def fill_missing_segment_text_translations_zh(
     for start in range(0, len(texts), batch_size):
         chunk = texts[start : start + batch_size]
         zh_all.extend(await translate_clip_transcript_batch(chunk))
+
+    if texts and not any(z.strip() for z in zh_all):
+        logger.warning(
+            "fill_missing_segment_text_translations_zh: LLM returned empty translations for "
+            "all %s clip(s); UI will show English only.",
+            len(texts),
+        )
 
     for idx, zh in zip(need_idx, zh_all):
         if zh.strip():
