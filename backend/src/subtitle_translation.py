@@ -5,6 +5,7 @@ Translate English subtitle phrases to Simplified Chinese for bilingual captions.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -49,9 +50,11 @@ def _get_phrase_agent() -> Agent:
         _phrase_agent = Agent(
             model=config.llm,
             system_prompt=(
-                "You translate on-screen subtitle phrases from English to natural Simplified Chinese. "
-                "Keep translations concise and suitable for short social video captions. "
-                "Do not add quotes or numbering. Preserve meaning; you may omit filler words if needed for brevity."
+                "You translate English subtitle lines into Simplified Chinese for short vertical videos. "
+                "Requirements: natural spoken Chinese (口语化、地道), not translationese; keep each line "
+                "short enough to read at a glance. Preserve facts and tone; you may compress or reorder "
+                "slightly inside the line if it reads more natively in Chinese. "
+                "Do not add quotes, labels, or numbering. Never return an empty zh for a non-empty English phrase."
             ),
             output_type=PhraseTranslationBatch,
         )
@@ -74,10 +77,11 @@ async def translate_phrase_batch(phrases: List[str]) -> List[str]:
 
     lines = "\n".join(f"{i}\t{phrases[i]}" for i in range(n))
     user_msg = (
-        "Translate each English phrase to Simplified Chinese. "
+        "Translate each English line to one Simplified Chinese subtitle line. "
         f"There are exactly {n} lines in format: index<TAB>phrase.\n\n"
         f"{lines}\n\n"
-        "Return structured output with one item per index i (0..n-1) and field zh."
+        "Return structured output with one item per index i (0..n-1) and field zh. "
+        "Every zh must be non-empty for non-blank English."
     )
     try:
         result = await agent.run(user_msg)
@@ -115,14 +119,34 @@ async def translate_phrases_batched(
     return out
 
 
+def _store_phrase_translation(
+    merged: Dict[str, str],
+    key: str,
+    en: str,
+    zh: str,
+) -> None:
+    """Store under normalized key and legacy key when they differ (cache compatibility)."""
+    from .video_utils import normalize_subtitle_phrase_key_legacy
+
+    z = (zh or "").strip()
+    if not z:
+        return
+    merged[key] = z
+    toks = [x for x in re.split(r"\s+", (en or "").strip()) if x]
+    if toks:
+        leg = normalize_subtitle_phrase_key_legacy(toks)
+        if leg and leg != key:
+            merged[leg] = z
+
+
 async def apply_bilingual_phrase_translations(
     video_path,
     transcript_data: Dict[str, Any],
     segments: List[Dict[str, Any]],
 ) -> None:
     """
-    Fill transcript_data['phrase_translations'] for 3-word subtitle groups used in clips.
-    Persists updated JSON next to the video file.
+    Fill transcript_data['phrase_translations'] for bilingual subtitle cards (same
+    grouping as clip rendering). Persists updated JSON next to the video file.
     """
     from pathlib import Path
 
@@ -141,13 +165,27 @@ async def apply_bilingual_phrase_translations(
         transcript_data["phrase_translations"] = existing
         return
 
-    phrases = [en for _, en in to_translate]
-    zh_by_en = await translate_phrases_batched(phrases)
     merged = dict(existing)
-    for (key, en), zh in zip(
-        to_translate, [zh_by_en.get(en, "").strip() for en in phrases]
-    ):
-        if zh:
-            merged[key] = zh
+
+    async def _run_batches(pairs_in: List[tuple[str, str]]) -> None:
+        if not pairs_in:
+            return
+        phrases = [en for _, en in pairs_in]
+        zh_by_en = await translate_phrases_batched(phrases)
+        for (key, en), zh in zip(
+            pairs_in, [zh_by_en.get(en, "").strip() for en in phrases]
+        ):
+            _store_phrase_translation(merged, key, en, zh)
+
+    await _run_batches(to_translate)
+
+    # Second pass: lines that stayed empty (model miss or parse glitch).
+    still_missing = [(key, en) for key, en in to_translate if not (merged.get(key) or "").strip()]
+    if still_missing:
+        logger.info(
+            "Bilingual phrase translation retry for %s empty lines", len(still_missing)
+        )
+        await _run_batches(still_missing)
+
     transcript_data["phrase_translations"] = merged
     cache_transcript_data(Path(video_path), transcript_data)

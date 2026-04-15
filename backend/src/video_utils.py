@@ -688,8 +688,33 @@ def get_words_in_range(
     return relevant_words
 
 
+_TOKEN_EDGE_PUNCT_RE = re.compile(
+    r'^[\s\"\'"“”‘’\[\({]+|[\s\"\'"“”‘’.,;:!?…，。！？）\]}\-—]+$', re.UNICODE
+)
+
+
+def _strip_token_edges_for_key(t: str) -> str:
+    """Remove outer punctuation/spaces so ASR token variants map to one cache key."""
+    s = t.strip()
+    if not s:
+        return ""
+    s = _TOKEN_EDGE_PUNCT_RE.sub("", s)
+    return s.strip().lower()
+
+
 def normalize_subtitle_phrase_key(tokens: List[str]) -> str:
     """Stable cache key for a subtitle phrase built from word tokens."""
+    parts: List[str] = []
+    for raw in tokens:
+        t = _strip_token_edges_for_key(raw)
+        t = re.sub(r"\s+", " ", t)
+        if t:
+            parts.append(t)
+    return " ".join(parts)
+
+
+def normalize_subtitle_phrase_key_legacy(tokens: List[str]) -> str:
+    """Previous key scheme (still tried at lookup for older transcript caches)."""
     parts: List[str] = []
     for raw in tokens:
         t = raw.strip().lower()
@@ -699,13 +724,83 @@ def normalize_subtitle_phrase_key(tokens: List[str]) -> str:
     return " ".join(parts)
 
 
+def _word_ends_strong_clause_boundary(text: str) -> bool:
+    t = (text or "").rstrip()
+    return bool(t) and t[-1] in ".?!"
+
+
+def _word_ends_soft_pause(text: str) -> bool:
+    t = (text or "").rstrip()
+    return bool(t) and t[-1] in ",;:"
+
+
+def group_words_for_bilingual_captions(words: List[Dict]) -> List[List[Dict]]:
+    """
+    Split ASR words into subtitle cards for bilingual (and monolingual) rendering.
+
+    Prefers ~3 words per card but may use 2–5 to end on a clause boundary, so
+    each English card stays a coherent phrase for translation and matches render.
+    """
+    if not words:
+        return []
+    groups: List[List[Dict]] = []
+    i = 0
+    n = len(words)
+    while i < n:
+        remain = n - i
+        if remain == 1:
+            groups.append(words[i : i + 1])
+            break
+        hi = min(remain, 5)
+        best = min(3, hi)
+        found = False
+        for cand in range(2, hi + 1):
+            if _word_ends_strong_clause_boundary(words[i + cand - 1]["text"]):
+                best = cand
+                found = True
+                break
+        if not found:
+            for cand in range(3, hi + 1):
+                if _word_ends_soft_pause(words[i + cand - 1]["text"]):
+                    best = cand
+                    found = True
+                    break
+        groups.append(words[i : i + best])
+        i += best
+    return groups
+
+
+def lookup_phrase_translation(
+    phrase_translations: Dict[str, str],
+    tokens: List[str],
+    en_line: str,
+) -> str:
+    """Resolve Chinese line with tolerant keying (punctuation / legacy cache)."""
+    if not phrase_translations:
+        return ""
+    key_fns = (normalize_subtitle_phrase_key, normalize_subtitle_phrase_key_legacy)
+    for key_fn in key_fns:
+        k = key_fn(tokens)
+        z = (phrase_translations.get(k) or "").strip()
+        if z:
+            return z
+    etoks = [x for x in re.split(r"\s+", (en_line or "").strip()) if x]
+    if etoks:
+        for key_fn in key_fns:
+            k = key_fn(etoks)
+            z = (phrase_translations.get(k) or "").strip()
+            if z:
+                return z
+    return ""
+
+
 def collect_bilingual_phrase_pairs(
     transcript_data: Dict[str, Any],
     segments: List[Dict[str, Any]],
 ) -> List[Tuple[str, str]]:
     """
-    Unique (normalized_key, display_en) pairs for non-overlapping 3-word groups
-    inside each clip segment's time range.
+    Unique (normalized_key, display_en) pairs for subtitle cards inside each
+    clip segment's time range. Grouping matches ``create_bilingual_static_subtitles``.
     """
     seen: set[str] = set()
     out: List[Tuple[str, str]] = []
@@ -713,8 +808,7 @@ def collect_bilingual_phrase_pairs(
         st = parse_timestamp_to_seconds(seg["start_time"])
         et = parse_timestamp_to_seconds(seg["end_time"])
         words = get_words_in_range(transcript_data, st, et)
-        for i in range(0, len(words), 3):
-            group = words[i : i + 3]
+        for group in group_words_for_bilingual_captions(words):
             if not group:
                 continue
             tokens = [w["text"] for w in group]
@@ -756,6 +850,75 @@ def should_use_bilingual_subtitles(
     return bool(transcript_data.get("segments"))
 
 
+def _cjk_fallback_font_path(font_path: str) -> bool:
+    fp = (font_path or "").lower()
+    return "sourcehan" in fp or "notosans" in fp or "noto sans" in fp
+
+
+def _primary_cjk_stroke_width(font_path: str, base_stroke: int) -> int:
+    """Stronger outline when rendering CJK with a regular-weight fallback font."""
+    if base_stroke <= 0 or not _cjk_fallback_font_path(font_path):
+        return base_stroke
+    return min(12, max(base_stroke + 1, int(round(base_stroke * 1.35))))
+
+
+def _bilingual_text_clip_from_template(
+    *,
+    text: str,
+    font_path: str,
+    font_size: int,
+    style_template: Dict[str, Any],
+    max_text_width: int,
+    stroke_width: int,
+    interline: int = 6,
+    margin: Optional[Tuple[int, int, int, int]] = None,
+) -> Any:
+    """
+    One subtitle line using caption template colors, outline, optional background,
+    and optional drop shadow (same cues as non-bilingual pop/static clips).
+    """
+    stroke_color = style_template.get("stroke_color", "black")
+    sc = stroke_color if stroke_color else None
+    use_shadow = bool(style_template.get("shadow"))
+    bg = None
+    if style_template.get("background") and style_template.get("background_color"):
+        bg = style_template["background_color"]
+
+    base_kw: Dict[str, Any] = dict(
+        text=text,
+        font=font_path,
+        font_size=font_size,
+        color=style_template["font_color"],
+        stroke_color=sc,
+        stroke_width=stroke_width,
+        method="caption",
+        size=(max_text_width, None),
+        text_align="center",
+        vertical_align="bottom",
+        interline=interline,
+    )
+    if margin is not None:
+        base_kw["margin"] = margin
+    if bg is not None:
+        base_kw["bg_color"] = bg
+
+    main = TextClip(**base_kw)
+    if not use_shadow:
+        return main
+
+    shadow_kw = {k: v for k, v in base_kw.items() if k != "bg_color"}
+    shadow_kw["color"] = "#000000"
+    shadow_kw["stroke_width"] = 0
+    shadow_kw["stroke_color"] = None
+    shadow = TextClip(**shadow_kw)
+    dx, dy = 3, 3
+    w, h = main.size
+    return CompositeVideoClip(
+        [shadow.with_position((dx, dy)), main.with_position((0, 0))],
+        size=(w + dx, h + dy),
+    )
+
+
 def create_bilingual_static_subtitles(
     relevant_words: List[Dict],
     video_width: int,
@@ -765,38 +928,23 @@ def create_bilingual_static_subtitles(
     main_font_size: int,
     secondary_font_size: int,
     phrase_translations: Dict[str, str],
-) -> List[TextClip]:
+) -> List[Any]:
     """
     Chinese primary (main_font_size), English secondary below (secondary_font_size).
-    Uses static grouping (3 words) regardless of karaoke/pop template.
+    Uses static grouping (3 words) regardless of karaoke/pop template, but applies
+    the selected template's colors, outline, background, shadow, and font family
+    (with the same CJK fallback rules as VideoProcessor).
     """
-    subtitle_clips: List[TextClip] = []
+    subtitle_clips: List[Any] = []
     position_y_base = float(style_template.get("position_y", 0.75))
     max_text_width = get_subtitle_max_width(video_width)
-    stroke_color = style_template.get("stroke_color", "black")
-    stroke_width = style_template.get("stroke_width", 1)
+    base_stroke = int(style_template.get("stroke_width", 1))
     gap = max(6, int(video_height * 0.012))
 
     main_scaled = get_scaled_font_size(main_font_size, video_width)
     sub_scaled = get_scaled_font_size(secondary_font_size, video_width)
 
-    zh_font = "SourceHanSansSC-Regular.otf"
-    zh_processor = VideoProcessor(
-        zh_font,
-        main_font_size,
-        style_template["font_color"],
-        text_for_font_detection="中文",
-    )
-    en_processor = VideoProcessor(
-        font_family,
-        secondary_font_size,
-        style_template["font_color"],
-        text_for_font_detection="",
-    )
-
-    words_per_subtitle = 3
-    for i in range(0, len(relevant_words), words_per_subtitle):
-        word_group = relevant_words[i : i + words_per_subtitle]
+    for word_group in group_words_for_bilingual_captions(relevant_words):
         if not word_group:
             continue
 
@@ -810,47 +958,58 @@ def create_bilingual_static_subtitles(
         en_line = " ".join(t.strip() for t in tokens).strip()
         if not en_line:
             continue
-        key = normalize_subtitle_phrase_key(tokens)
-        zh_line = (phrase_translations.get(key) or "").strip()
+        zh_line = lookup_phrase_translation(phrase_translations, tokens, en_line)
 
         try:
             if zh_line:
-                en_clip = (
-                    TextClip(
-                        text=en_line,
-                        font=en_processor.font_path,
-                        font_size=sub_scaled,
-                        color=style_template["font_color"],
-                        stroke_color=stroke_color if stroke_color else None,
-                        stroke_width=stroke_width,
-                        size=(max_text_width, None),
-                        align="South",
-                        interline=6,
-                    )
-                    .with_duration(segment_duration)
-                    .with_start(segment_start)
+                zh_processor = VideoProcessor(
+                    font_family,
+                    main_font_size,
+                    style_template["font_color"],
+                    text_for_font_detection=zh_line,
                 )
+                en_processor = VideoProcessor(
+                    font_family,
+                    secondary_font_size,
+                    style_template["font_color"],
+                    text_for_font_detection=en_line,
+                )
+                zh_stroke = _primary_cjk_stroke_width(zh_processor.font_path, base_stroke)
+
+                # CJK caption: extra line spacing + padding so descenders / last line
+                # are not clipped by MoviePy/Pillow height (common with vertical_align=bottom).
+                zh_interline = max(10, int(round(main_scaled * 0.26)))
+                zh_margin = (
+                    max(4, int(main_scaled * 0.12)),
+                    max(6, int(main_scaled * 0.16)),
+                    max(4, int(main_scaled * 0.12)),
+                    max(14, int(main_scaled * 0.36) + base_stroke),
+                )
+
+                en_clip = _bilingual_text_clip_from_template(
+                    text=en_line,
+                    font_path=en_processor.font_path,
+                    font_size=sub_scaled,
+                    style_template=style_template,
+                    max_text_width=max_text_width,
+                    stroke_width=base_stroke,
+                ).with_duration(segment_duration).with_start(segment_start)
                 en_h = en_clip.size[1] if en_clip.size else 40
                 en_top = get_safe_vertical_position(
                     video_height, en_h, position_y_base
                 )
                 en_clip = en_clip.with_position(("center", en_top))
 
-                zh_clip = (
-                    TextClip(
-                        text=zh_line,
-                        font=zh_processor.font_path,
-                        font_size=main_scaled,
-                        color=style_template["font_color"],
-                        stroke_color=stroke_color if stroke_color else None,
-                        stroke_width=stroke_width,
-                        size=(max_text_width, None),
-                        align="South",
-                        interline=6,
-                    )
-                    .with_duration(segment_duration)
-                    .with_start(segment_start)
-                )
+                zh_clip = _bilingual_text_clip_from_template(
+                    text=zh_line,
+                    font_path=zh_processor.font_path,
+                    font_size=main_scaled,
+                    style_template=style_template,
+                    max_text_width=max_text_width,
+                    stroke_width=zh_stroke,
+                    interline=zh_interline,
+                    margin=zh_margin,
+                ).with_duration(segment_duration).with_start(segment_start)
                 zh_h = zh_clip.size[1] if zh_clip.size else 40
                 zh_top_raw = en_top - gap - zh_h
                 min_top_padding = max(40, int(video_height * 0.05))
@@ -927,7 +1086,8 @@ def create_faster_whisper_subtitles(
         phrase_map: Dict[str, str] = dict(
             transcript_data.get("phrase_translations") or {}
         )
-        secondary_size = max(10, effective_font_size - 2)
+        # English secondary: two points smaller than the previous (-2) offset.
+        secondary_size = max(8, effective_font_size - 4)
         return create_bilingual_static_subtitles(
             relevant_words,
             video_width,
@@ -1023,8 +1183,11 @@ def create_static_subtitles(
                     font_size=calculated_font_size,
                     color=template["font_color"],
                     stroke_color=stroke_color if stroke_color else None,
+                    stroke_width=stroke_width,
+                    method="caption",
                     size=(max_text_width, None),
-                    align="South",  # Anchor to the bottom of the text
+                    text_align="center",
+                    vertical_align="bottom",
                     interline=6,
                 )
                 .with_duration(segment_duration)
