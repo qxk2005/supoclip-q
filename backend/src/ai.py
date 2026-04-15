@@ -69,6 +69,57 @@ class TranscriptSegment(BaseModel):
     virality: ViralityAnalysis = Field(description="Detailed virality score breakdown")
 
 
+class LeanTranscriptSegment(BaseModel):
+    """
+    Compact segment shape for the first LLM pass only.
+
+    Avoids large per-segment JSON (no four subscores + long virality_reasoning). Those are derived
+    in code. Verbatim clip text stays in English (or source language); zh-CN for the UI is filled
+    later by subtitle_translation.fill_missing_segment_text_translations_zh.
+    """
+
+    start_time: str = Field(description="Start timestamp in MM:SS format")
+    end_time: str = Field(description="End timestamp in MM:SS format")
+    text: str = Field(
+        description="Verbatim transcript wording for the selected time range only (do not translate)."
+    )
+    relevance_score: float = Field(ge=0.0, le=1.0)
+    reasoning: str = Field(
+        description="One or two short sentences in Simplified Chinese (under ~120 characters)."
+    )
+    virality_score: int = Field(
+        ge=0,
+        le=100,
+        description="Single overall virality score 0-100 (no subscores in this step).",
+    )
+    hook_type: Optional[
+        Literal["question", "statement", "statistic", "story", "contrast", "none"]
+    ] = Field(default="none")
+
+
+class LeanBRollOpportunity(BaseModel):
+    """B-roll hint with minimal fields for the lean analysis pass."""
+
+    timestamp: str = Field(description="MM:SS")
+    duration: float = Field(ge=2.0, le=5.0)
+    search_term: str = Field(description="Short English keyword for stock search")
+    context: str = Field(description="Brief Simplified Chinese (one short phrase)")
+
+
+class LeanTranscriptAnalysis(BaseModel):
+    """First-pass analysis: small JSON footprint to reduce truncation and invalid output."""
+
+    most_relevant_segments: List[LeanTranscriptSegment]
+    summary: str = Field(description="Brief summary in Simplified Chinese (under ~300 characters).")
+    key_topics: List[str] = Field(
+        description="Short Simplified Chinese topic labels (each under ~20 characters)."
+    )
+    broll_opportunities: Optional[List[LeanBRollOpportunity]] = Field(
+        default=None,
+        description="Only when B-roll is requested in the user task.",
+    )
+
+
 class BRollOpportunity(BaseModel):
     """Identifies an opportunity to insert B-roll footage."""
 
@@ -91,53 +142,52 @@ class TranscriptAnalysis(BaseModel):
     )
 
 
-# Enhanced system prompt with virality scoring and B-roll detection
+# First-pass prompt: compact JSON only (full subscores are derived in code; zh transcript lines later).
 transcript_analysis_system_prompt = """You are an expert transcript analyst for short-form video editing.
 
-Your job is to identify and extract the best clip candidates from the provided transcript. Focus on moments that are engaging, informative, or entertaining.
+Your job is to identify the best clip candidates from the transcript. Output must stay SMALL: one overall virality_score per segment (0-100), not four sub-scores and not long scoring prose.
 
 OUTPUT LANGUAGE:
-- Write reasoning, virality_reasoning, summary, key_topics, and B-roll context in Simplified Chinese.
-- Keep segment.text verbatim from the transcript (same language as the spoken audio).
+- reasoning, summary, key_topics, B-roll context: Simplified Chinese, short.
+- segment.text: verbatim from the transcript only (same language as the audio). Never translate segment.text into Chinese in this step.
+
+FORBIDDEN:
+- Do not output chain-of-thought, "Thinking Process", step-by-step analysis, or preambles.
+- Do not echo long excerpts of the transcript outside JSON.
+- The first non-whitespace character of your entire reply MUST be `{` or `[` starting the JSON value.
 
 CORE OBJECTIVES:
-1.  Identify segments that would be compelling on social media.
-2.  Focus on complete thoughts, insights, or entertaining moments.
-3.  Prioritize content with strong hooks, emotional moments, or valuable information.
-4.  Score each segment's viral potential.
+1. Pick moments that work as standalone short clips (hooks, value, emotion, entertainment).
+2. Each segment must be a contiguous range from the transcript timestamps.
 
 GROUNDING RULES:
-1.  Use only the provided transcript lines and timestamps.
-2.  Do not invent facts, tone, or context.
-3.  Each segment must correspond to a contiguous block of text in the transcript.
-4.  The text of the segment must closely match the transcript.
-5.  When the user message includes a DOMAIN GLOSSARY of professional terms, you may replace clear speech-recognition mis-hearings with the glossary spelling inside segment.text only when the transcript clearly refers to that same term. Do not change timestamps or merge non-contiguous spans; do not add topics absent from the transcript.
+1. Use only provided transcript lines and timestamps.
+2. Do not invent facts. segment.text must match the transcript in that time range.
+3. If the user message includes a DOMAIN GLOSSARY, you may fix clear ASR mis-hearings inside segment.text only when the transcript clearly refers to that term. Do not merge non-contiguous spans.
 
-SEGMENT SELECTION CRITERIA:
-1.  STRONG HOOKS: Attention-grabbing opening lines.
-2.  VALUABLE CONTENT: Tips, insights, interesting facts, stories.
-3.  EMOTIONAL MOMENTS: Excitement, surprise, humor, inspiration.
-4.  COMPLETE THOUGHTS: Self-contained ideas that make sense on their own.
-5.  ENTERTAINING: Content that people would want to share.
+SEGMENT FIELDS (per segment):
+- start_time, end_time, text, relevance_score (0-1), reasoning (short Chinese), virality_score (0-100 integer), hook_type.
 
-VIRALITY SCORING (0-100 total, from four 0-25 subscores):
-For each segment, provide a detailed virality breakdown:
+TIMING:
+- Prefer ~10-60 seconds per segment; respect natural boundaries.
 
-1.  HOOK STRENGTH (0-25): How well does it grab attention?
-2.  ENGAGEMENT (0-25): Is it entertaining or emotionally resonant?
-3.  VALUE (0-25): Is it educational or informative?
-4.  SHAREABILITY (0-25): Would someone be compelled to share it?
-
-TIMING GUIDELINES:
--   Segments should ideally be between 10-60 seconds.
--   Focus on natural content boundaries.
--   Ensure there's enough context for the segment to be understandable.
-
-Find all compelling segments that would work well as standalone clips. Quality over quantity.
+Quality over quantity.
 """
 
+# Second-chance prompt when the model returns prose / thinking but no parseable JSON.
+_JSON_RETRY_USER_PREFIX = (
+    "Your previous reply was NOT valid JSON. Output ONE JSON object only: no thinking, "
+    "no 'Thinking Process', no markdown fences, no commentary. First character must be '{'.\n"
+    'Schema: {"summary": string (zh-CN), "key_topics": string[] (zh-CN), '
+    '"most_relevant_segments": object[]}.\n'
+    "Each segment object: start_time, end_time, text (verbatim from transcript), "
+    "relevance_score (number 0-1), reasoning (short zh-CN), virality_score (integer 0-100), "
+    "optional hook_type.\n\n"
+    "Transcript:\n\n"
+)
+
 # Lazy-loaded agent to avoid import-time failures when API keys aren't set
-_transcript_agent: Optional[Agent[None, TranscriptAnalysis]] = None
+_transcript_agent: Optional[Agent[None, LeanTranscriptAnalysis]] = None
 
 
 def _get_missing_llm_key_error(model_name: str) -> Optional[str]:
@@ -170,7 +220,7 @@ def _get_missing_llm_key_error(model_name: str) -> Optional[str]:
     return None
 
 
-def get_transcript_agent() -> Agent[None, TranscriptAnalysis]:
+def get_transcript_agent() -> Agent[None, LeanTranscriptAnalysis]:
     """Get or create the transcript analysis agent (lazy initialization)."""
     global _transcript_agent
     if _transcript_agent is None:
@@ -187,7 +237,7 @@ def get_transcript_agent() -> Agent[None, TranscriptAnalysis]:
         # and is automatically picked up by the underlying LLM client.
         # We no longer pass it directly to the Agent constructor.
 
-        _transcript_agent = Agent[None, TranscriptAnalysis](**agent_args)
+        _transcript_agent = Agent[None, LeanTranscriptAnalysis](**agent_args)
     return _transcript_agent
 
 
@@ -258,7 +308,8 @@ Transcript:
 OUTPUT FORMAT (critical):
 - Do not output thinking steps, chain-of-thought, or a "Thinking Process" section. Respond with JSON only.
 - Output ONE JSON value only (no markdown fences required). Either a JSON array of segment objects, OR an object with key "most_relevant_segments" (array).
-- Every segment object MUST include non-null string fields: "start_time", "end_time", and "text" (verbatim transcript for that range).
+- Each segment object MUST include: "start_time", "end_time", "text" (verbatim transcript only), "relevance_score" (number 0-1), "reasoning" (short Simplified Chinese), "virality_score" (integer 0-100), and optionally "hook_type".
+- Do NOT include a "virality" object or per-field subscores; use only "virality_score".
 - Valid UTF-8 JSON: use double quotes for all keys and string values; escape internal double quotes as \\".
 - Do not wrap the JSON in markdown code blocks. Do not add commentary before or after the JSON.
 - Do not use ### headings. Avoid putting raw [MM:SS] timestamps outside JSON strings."""
@@ -306,20 +357,97 @@ def _try_raw_decode_at_json_starts(cleaned: str) -> Optional[Any]:
     return None
 
 
+def _extract_json_envelope_by_brace_scan(text: str) -> Optional[Any]:
+    """
+    When models emit long 'Thinking Process' then valid JSON, or JSON whose first key is not
+    most_relevant_segments (e.g. summary first), find a top-level dict/array by trying raw_decode
+    from each '{' position. Prefer dicts that contain most_relevant_segments / segments; do not stop
+    at inner '{' that opens a segment object inside the array (that would decode to a fragment).
+    """
+    decoder = json.JSONDecoder()
+    max_tries = 450
+
+    brace_starts = [m.start() for m in re.finditer(r"\{", text)]
+    window = brace_starts[-max_tries:]
+
+    last_envelope: Optional[dict[str, Any]] = None
+    for pos in window:
+        try:
+            obj, _ = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and (
+            "most_relevant_segments" in obj or "segments" in obj
+        ):
+            last_envelope = obj
+    if last_envelope is not None:
+        return last_envelope
+
+    for pos in reversed(window):
+        try:
+            obj, _ = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            continue
+        if (
+            isinstance(obj, dict)
+            and "start_time" in obj
+            and "end_time" in obj
+            and _segment_spoken_text_from_dict(obj)
+        ):
+            return [obj]
+
+    bracket_starts = [m.start() for m in re.finditer(r"\[\s*\{", text)]
+    for pos in reversed(bracket_starts[-max_tries:]):
+        try:
+            obj, _ = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            continue
+        if (
+            isinstance(obj, list)
+            and obj
+            and isinstance(obj[0], dict)
+            and ("start_time" in obj[0] or "text" in obj[0])
+        ):
+            return obj
+    return None
+
+
 def _strip_thinking_prose_before_final_json(text: str) -> str:
     """
-    Qwen-style models often emit a long 'Thinking Process' first, then the real JSON at the end.
-    Prefer the *last* top-level {\"most_relevant_segments\": ...} or {\"segments\": ...} so we do not
-    parse an illustrative fragment from the thinking section.
+    Models often emit 'Thinking Process' first, then JSON. The JSON object may list summary or
+    key_topics *before* most_relevant_segments, so we cannot require '\\{\"most_relevant_segments\"'.
+    Prefer the last parseable envelope dict by scanning '{' positions from the end.
     """
+    extracted = _extract_json_envelope_by_brace_scan(text)
+    if extracted is not None:
+        try:
+            return json.dumps(extracted, ensure_ascii=False)
+        except (TypeError, ValueError):
+            pass
+
     best_start: Optional[int] = None
     for pat in (
         r'\{\s*"most_relevant_segments"\s*:\s*\[',
         r'\{\s*"segments"\s*:\s*\[',
+        r'"most_relevant_segments"\s*:\s*\[',
+        r'"segments"\s*:\s*\[',
     ):
         for m in re.finditer(pat, text):
             best_start = m.start()
     if best_start is not None:
+        # If match started at ", walk back to the object '{' for a clean cut (best effort).
+        if best_start < len(text) and text[best_start] != "{":
+            decoder = json.JSONDecoder()
+            prefix = text[:best_start]
+            for pos in reversed([m.start() for m in re.finditer(r"\{", prefix)][-120:]):
+                try:
+                    obj, _ = decoder.raw_decode(text, pos)
+                    if isinstance(obj, dict) and (
+                        "most_relevant_segments" in obj or "segments" in obj
+                    ):
+                        return text[pos:]
+                except json.JSONDecodeError:
+                    continue
         return text[best_start:]
     return text
 
@@ -327,7 +455,7 @@ def _strip_thinking_prose_before_final_json(text: str) -> str:
 def _trim_to_first_json_value(text: str) -> str:
     """Drop leading prose so the first character is `{` or `[` starting a JSON value."""
     m = re.search(
-        r'(\{\s*"(?:most_relevant_segments|segments|start_time|summary|key_topics)"|\[\s*\{)',
+        r'(\{\s*"(?:most_relevant_segments|segments|summary|key_topics)"|\[\s*\{)',
         text,
     )
     if m:
@@ -414,19 +542,16 @@ def _parse_json_payload_from_llm_text(text: str) -> Optional[Any]:
     cleaned = _normalize_json_candidate(raw)
     decoder = json.JSONDecoder()
 
-    # 0) Skip prose before first top-level { or [ (e.g. "Here is the JSON:")
-    first_obj = re.search(
-        r'\{\s*"(?:most_relevant_segments|segments|start_time|summary|key_topics)"',
-        cleaned,
+    # 0) Skip prose before the analysis object. Only match envelope keys — NOT "start_time"
+    # (that also appears on each segment object and would make "last match" cut to a fragment).
+    first_obj_matches = list(
+        re.finditer(
+            r'\{\s*"(?:most_relevant_segments|segments|summary|key_topics)"',
+            cleaned,
+        )
     )
-    first_arr = re.search(r"\[\s*\{", cleaned)
-    starts: list[int] = []
-    if first_obj:
-        starts.append(first_obj.start())
-    if first_arr:
-        starts.append(first_arr.start())
-    if starts:
-        cut = min(starts)
+    if first_obj_matches:
+        cut = first_obj_matches[-1].start()
         if cut > 0:
             cleaned = cleaned[cut:]
 
@@ -443,14 +568,20 @@ def _parse_json_payload_from_llm_text(text: str) -> Optional[Any]:
             except json.JSONDecodeError:
                 continue
 
-    # 2) Object with most_relevant_segments or segments
+    # 2) Object with most_relevant_segments or segments (key may appear after summary/key_topics)
     for key in ("most_relevant_segments", "segments"):
-        m_obj = re.search(rf'\{{\s*"{key}"\s*:', cleaned)
-        if m_obj:
+        matches = list(re.finditer(rf'"{key}"\s*:', cleaned))
+        if not matches:
+            continue
+        m_key = matches[-1]
+        brace_before = [x.start() for x in re.finditer(r"\{", cleaned[: m_key.start() + 1])]
+        for pos in reversed(brace_before[-150:]):
             try:
-                return decoder.raw_decode(cleaned, m_obj.start())[0]
+                obj, _ = decoder.raw_decode(cleaned, pos)
+                if isinstance(obj, dict) and key in obj:
+                    return obj
             except json.JSONDecodeError:
-                pass
+                continue
 
     # 3) JSON array of objects — require `[` then `{` (not `[15:` timestamp)
     for m in re.finditer(r"\[\s*\{", cleaned):
@@ -459,14 +590,15 @@ def _parse_json_payload_from_llm_text(text: str) -> Optional[Any]:
         except json.JSONDecodeError:
             continue
 
-    # 4) Any top-level `{` that looks like a segment (legacy)
-    m_seg = re.search(r"\{\s*\"start_time\"\s*:", cleaned)
-    if m_seg:
-        # Might be a single segment object or wrapped; try array of one
-        try:
-            return decoder.raw_decode(cleaned, m_seg.start())[0]
-        except json.JSONDecodeError:
-            pass
+    # 4) Single segment object (legacy) — only when there is no analysis envelope in the string,
+    # otherwise step 4 would match the first segment inside most_relevant_segments and truncate.
+    if "most_relevant_segments" not in cleaned and "segments" not in cleaned:
+        m_seg = re.search(r"\{\s*\"start_time\"\s*:", cleaned)
+        if m_seg:
+            try:
+                return decoder.raw_decode(cleaned, m_seg.start())[0]
+            except json.JSONDecodeError:
+                pass
 
     md_segments = _segments_from_markdown_style_output(cleaned)
     if md_segments:
@@ -479,6 +611,13 @@ def _parse_json_payload_from_llm_text(text: str) -> Optional[Any]:
     scanned = _try_raw_decode_at_json_starts(cleaned)
     if scanned is not None:
         return scanned
+
+    brace_guess = _extract_json_envelope_by_brace_scan(cleaned)
+    if brace_guess is not None:
+        return brace_guess
+    brace_guess = _extract_json_envelope_by_brace_scan(_normalize_json_candidate(text))
+    if brace_guess is not None:
+        return brace_guess
 
     return None
 
@@ -549,6 +688,71 @@ def _virality_dict_from_segment_json(segment: Mapping[str, Any]) -> dict[str, in
     }
 
 
+def _distribute_virality_total(total: int) -> tuple[int, int, int, int]:
+    """Map a single 0-100 score to four 0-25 subscores that sum to total (for downstream compatibility)."""
+    t = max(0, min(100, int(total)))
+    base, rem = divmod(t, 4)
+    parts = [base + (1 if i < rem else 0) for i in range(4)]
+    return (parts[0], parts[1], parts[2], parts[3])
+
+
+def lean_transcript_analysis_to_full(lean: LeanTranscriptAnalysis) -> TranscriptAnalysis:
+    """Expand first-pass lean analysis into the full TranscriptAnalysis used by the rest of the pipeline."""
+    segments_out: List[TranscriptSegment] = []
+    allowed_hooks = (
+        "question",
+        "statement",
+        "statistic",
+        "story",
+        "contrast",
+        "none",
+    )
+    for seg in lean.most_relevant_segments:
+        hook_type = seg.hook_type or "none"
+        if hook_type not in allowed_hooks:
+            hook_type = "none"
+        h, e, v, s = _distribute_virality_total(seg.virality_score)
+        vr = f"综合传播潜力 {seg.virality_score}/100（由单分拆解为四项子分供系统使用）。"
+        vir = ViralityAnalysis(
+            hook_score=h,
+            engagement_score=e,
+            value_score=v,
+            shareability_score=s,
+            total_score=seg.virality_score,
+            hook_type=hook_type,
+            virality_reasoning=vr,
+        )
+        segments_out.append(
+            TranscriptSegment(
+                start_time=seg.start_time,
+                end_time=seg.end_time,
+                text=seg.text,
+                relevance_score=seg.relevance_score,
+                reasoning=seg.reasoning,
+                virality=vir,
+            )
+        )
+
+    broll: Optional[List[BRollOpportunity]] = None
+    if lean.broll_opportunities:
+        broll = [
+            BRollOpportunity(
+                timestamp=x.timestamp,
+                duration=x.duration,
+                search_term=x.search_term,
+                context=x.context,
+            )
+            for x in lean.broll_opportunities
+        ]
+
+    return TranscriptAnalysis(
+        most_relevant_segments=segments_out,
+        summary=lean.summary,
+        key_topics=lean.key_topics,
+        broll_opportunities=broll,
+    )
+
+
 def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAnalysis]:
     """Build TranscriptAnalysis from parsed JSON (list of segments or full envelope dict)."""
     if parsed is None:
@@ -573,6 +777,15 @@ def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAna
             return None
     else:
         return None
+
+    envelope_for_lean = dict(envelope)
+    if isinstance(parsed, dict) and "broll_opportunities" in parsed:
+        envelope_for_lean["broll_opportunities"] = parsed.get("broll_opportunities")
+    try:
+        lean = LeanTranscriptAnalysis.model_validate(envelope_for_lean)
+        return lean_transcript_analysis_to_full(lean)
+    except ValidationError:
+        pass
 
     segments_raw = envelope.get("most_relevant_segments") or []
     adapted_segments = []
@@ -709,7 +922,9 @@ async def get_most_relevant_parts_by_transcript(
 
                 if hasattr(result, "output"):
                     out = result.output
-                    if isinstance(out, TranscriptAnalysis):
+                    if isinstance(out, LeanTranscriptAnalysis):
+                        analysis = lean_transcript_analysis_to_full(out)
+                    elif isinstance(out, TranscriptAnalysis):
                         analysis = out
                     elif isinstance(out, str):
                         parsed = _parse_json_payload_from_llm_text(out)
@@ -722,6 +937,25 @@ async def get_most_relevant_parts_by_transcript(
                                 i + 1,
                                 snippet,
                             )
+                            try:
+                                result_fix = await agent.run(_JSON_RETRY_USER_PREFIX + chunk)
+                                out_fix = getattr(result_fix, "output", None)
+                                if isinstance(out_fix, LeanTranscriptAnalysis):
+                                    analysis = lean_transcript_analysis_to_full(out_fix)
+                                elif isinstance(out_fix, str):
+                                    p2 = _parse_json_payload_from_llm_text(out_fix)
+                                    analysis = _transcript_analysis_from_parsed_json(p2)
+                                if analysis is not None:
+                                    logger.info(
+                                        "Chunk %s: recovered segments after JSON-only retry",
+                                        i + 1,
+                                    )
+                            except Exception as retry_exc:
+                                logger.warning(
+                                    "JSON-only retry failed for chunk %s: %s",
+                                    i + 1,
+                                    retry_exc,
+                                )
                     else:
                         logger.warning(
                             "AI result for chunk %s is unexpected type: %s",
