@@ -17,7 +17,10 @@ class Config:
         self.ollama_base_url = self._get_optional_env("OLLAMA_BASE_URL")
         self.ollama_api_key = self._get_optional_env("OLLAMA_API_KEY")
 
-        self.whisper_model = os.getenv("WHISPER_MODEL", "base")
+        # WHISPER_MODEL preferred; WHISPER_MODEL_SIZE matches older .env.example naming
+        self.whisper_model = os.getenv("WHISPER_MODEL") or os.getenv(
+            "WHISPER_MODEL_SIZE", "base"
+        )
         self.llm = self._get_optional_env("LLM") or self._infer_default_llm()
         self.assembly_ai_api_key = os.getenv("ASSEMBLY_AI_API_KEY")
         self.pexels_api_key = os.getenv("PEXELS_API_KEY")
@@ -73,8 +76,15 @@ class Config:
         self.discord_sales_webhook_url = self._get_optional_env("DISCORD_SALES_WEBHOOK_URL")
         self.default_processing_mode = os.getenv("DEFAULT_PROCESSING_MODE", "fast")
         self.fast_mode_max_clips = int(os.getenv("FAST_MODE_MAX_CLIPS", "4"))
+        # Must be a valid faster-whisper size name (e.g. tiny, base, medium, large).
         self.fast_mode_transcript_model = os.getenv(
-            "FAST_MODE_TRANSCRIPT_MODEL", "nano"
+            "FAST_MODE_TRANSCRIPT_MODEL", "tiny"
+        )
+        self.balanced_mode_transcript_model = os.getenv(
+            "BALANCED_MODE_TRANSCRIPT_MODEL", "medium"
+        )
+        self.quality_mode_transcript_model = os.getenv(
+            "QUALITY_MODE_TRANSCRIPT_MODEL", "large-v3"
         )
 
     @staticmethod

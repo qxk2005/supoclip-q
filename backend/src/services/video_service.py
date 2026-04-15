@@ -95,9 +95,14 @@ class VideoService:
         Returns a tuple of (transcript_text, language_code).
         """
         logger.info(f"Generating transcript for: {video_path}")
-        speech_model = "best"
         if processing_mode == "fast":
             speech_model = config.fast_mode_transcript_model
+        elif processing_mode == "balanced":
+            speech_model = config.balanced_mode_transcript_model
+        elif processing_mode == "quality":
+            speech_model = config.quality_mode_transcript_model
+        else:
+            speech_model = config.whisper_model
 
         transcript, language = await run_in_thread(
             get_video_transcript, video_path, speech_model

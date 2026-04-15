@@ -25,8 +25,9 @@ export async function POST(request: Request) {
       "Content-Type": request.headers.get("Content-Type") || "multipart/form-data",
     },
     body: request.body,
-    duplex: 'half'
-  });
+    // Node/undici streaming requires duplex; TS lib.dom RequestInit may omit it
+    duplex: "half",
+  } as RequestInit & { duplex?: "half" });
 
   return new Response(upstream.body, {
     status: upstream.status,

@@ -105,6 +105,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [sourceTitle, setSourceTitle] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<File | null>(null);
   const { data: session, isPending } = useSession();
   const isAdmin = Boolean((session?.user as { is_admin?: boolean } | undefined)?.is_admin);
 
@@ -135,6 +136,31 @@ export default function Home() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const taskApiUrl = "/api/tasks";
   const youtubeThumbnailUrl = sourceType === "youtube" ? getYouTubeThumbnailUrl(url) : null;
+
+  const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (sourceType !== "upload" || !fileName || !fileRef.current) {
+      setUploadPreviewUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev);
+        }
+        return null;
+      });
+      return;
+    }
+    const file = fileRef.current;
+    const url = URL.createObjectURL(file);
+    setUploadPreviewUrl((prev) => {
+      if (prev) {
+        URL.revokeObjectURL(prev);
+      }
+      return url;
+    });
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [sourceType, fileName]);
 
   const refreshFonts = useCallback(async () => {
     try {
@@ -282,9 +308,6 @@ export default function Home() {
 
     fetchBillingSummary();
   }, [session?.user?.id, apiUrl]);
-
-  // Always treat file input as uncontrolled, and store file in a ref
-  const fileRef = useRef<File | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
@@ -1280,21 +1303,9 @@ export default function Home() {
             </form>
           </div>
 
-          {/* Right Column — Phone Preview */}
-          <div
-            className={`hidden lg:block flex-shrink-0 overflow-hidden transition-all duration-500 ease-in-out ${
-              sourceType === "upload"
-                ? "w-0 opacity-0"
-                : "w-[340px] opacity-100"
-            }`}
-          >
-            <div
-              className={`w-[340px] transition-all duration-500 ease-in-out ${
-                sourceType === "upload"
-                  ? "translate-x-6 scale-[0.97] opacity-0"
-                  : "translate-x-0 scale-100 opacity-100"
-              }`}
-            >
+          {/* Right Column — Phone Preview (YouTube 缩略图或本地上传视频首帧) */}
+          <div className="hidden lg:block w-[340px] flex-shrink-0 overflow-hidden">
+            <div className="w-[340px]">
             <div className="lg:sticky lg:top-8">
               <div className="flex items-center justify-center gap-2 mb-5 text-sm text-stone-400">
                 <Monitor className="w-4 h-4" />
@@ -1340,11 +1351,27 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Video background */}
-                    {youtubeThumbnailUrl ? (
+                    {/* Video background：YouTube 封面 / 本地文件视频帧 / 占位渐变 */}
+                    {sourceType === "youtube" && youtubeThumbnailUrl ? (
                       <div
                         className="absolute inset-0 bg-cover bg-center scale-105 blur-sm"
                         style={{ backgroundImage: `url(${youtubeThumbnailUrl})` }}
+                      />
+                    ) : sourceType === "upload" && uploadPreviewUrl ? (
+                      <video
+                        key={uploadPreviewUrl}
+                        src={uploadPreviewUrl}
+                        className="absolute inset-0 h-full w-full scale-105 object-cover blur-sm pointer-events-none"
+                        muted
+                        playsInline
+                        preload="metadata"
+                        onLoadedData={(e) => {
+                          try {
+                            e.currentTarget.currentTime = 0.05;
+                          } catch {
+                            /* ignore seek errors for odd codecs */
+                          }
+                        }}
                       />
                     ) : (
                       <div className="absolute inset-0 bg-gradient-to-b from-stone-600 via-stone-500 to-stone-700" />

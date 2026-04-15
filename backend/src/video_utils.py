@@ -26,6 +26,50 @@ logger = logging.getLogger(__name__)
 config = Config()
 TRANSCRIPT_CACHE_SCHEMA_VERSION = 2
 
+# Names accepted by faster-whisper's download_model (see faster_whisper.utils).
+_WHISPER_MODEL_SIZES = frozenset(
+    {
+        "tiny.en",
+        "tiny",
+        "base.en",
+        "base",
+        "small.en",
+        "small",
+        "medium.en",
+        "medium",
+        "large-v1",
+        "large-v2",
+        "large-v3",
+        "large",
+        "distil-large-v2",
+        "distil-medium.en",
+        "distil-small.en",
+        "distil-large-v3",
+        "distil-large-v3.5",
+        "large-v3-turbo",
+        "turbo",
+    }
+)
+# Legacy / mistaken labels that are not valid size names.
+_WHISPER_SIZE_ALIASES = {
+    "best": "large",
+    "nano": "tiny",
+}
+
+
+def resolve_whisper_model_size(raw: str) -> str:
+    """Map user-facing labels to a valid faster-whisper model size name."""
+    name = (raw or "base").strip().lower()
+    if not name:
+        name = "base"
+    name = _WHISPER_SIZE_ALIASES.get(name, name)
+    if name not in _WHISPER_MODEL_SIZES:
+        logger.warning(
+            "Unknown Whisper model size %r, falling back to base", raw
+        )
+        return "base"
+    return name
+
 
 class VideoProcessor:
     """Handles video processing operations with optimized settings."""
@@ -99,7 +143,8 @@ def get_video_transcript(
     logger.info(f"Getting transcript for: {video_path}")
 
     try:
-        model = WhisperModel(speech_model, device="cpu", compute_type="int8")
+        resolved_model = resolve_whisper_model_size(speech_model)
+        model = WhisperModel(resolved_model, device="cpu", compute_type="int8")
         segments, info = model.transcribe(str(video_path), word_timestamps=True)
 
         transcript_data = {
