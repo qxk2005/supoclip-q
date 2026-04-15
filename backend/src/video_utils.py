@@ -1834,6 +1834,8 @@ def create_clips_from_segments(
                     "end_time": segment["end_time"],
                     "duration": duration,
                     "text": segment["text"],
+                    "text_translation": segment.get("text_translation")
+                    or segment.get("text_zh"),
                     "relevance_score": segment["relevance_score"],
                     "reasoning": segment["reasoning"],
                     # Include virality data if available

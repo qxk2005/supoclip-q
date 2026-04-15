@@ -65,6 +65,7 @@ interface Clip {
   end_time: string;
   duration: number;
   text: string;
+  text_translation?: string | null;
   relevance_score: number;
   reasoning: string;
   clip_order: number;
@@ -882,12 +883,20 @@ export default function TaskPage() {
                             <div className="mb-4">
                               <h4 className="font-medium text-black mb-2">转写文本</h4>
                               <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">{clip.text}</p>
+                              {clip.text_translation ? (
+                                <div className="mt-2">
+                                  <h5 className="text-xs font-medium text-gray-500 mb-1">中文译文</h5>
+                                  <p className="text-sm text-gray-700 bg-stone-50 p-3 rounded border border-stone-100">
+                                    {clip.text_translation}
+                                  </p>
+                                </div>
+                              ) : null}
                             </div>
                           )}
                           {clip.reasoning && (
                             <div className="mb-4">
                               <h4 className="font-medium text-black mb-2">AI 分析</h4>
-                              <p className="text-sm text-gray-600">{clip.reasoning}</p>
+                              <p className="text-sm text-gray-600 whitespace-pre-wrap">{clip.reasoning}</p>
                             </div>
                           )}
                           <Button size="sm" variant="outline" asChild>
@@ -1099,13 +1108,21 @@ export default function TaskPage() {
                         <div className="mb-4">
                           <h4 className="font-medium text-black mb-2">转写文本</h4>
                           <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded">{clip.text}</p>
+                          {clip.text_translation ? (
+                            <div className="mt-2">
+                              <h5 className="text-xs font-medium text-gray-500 mb-1">中文译文</h5>
+                              <p className="text-sm text-gray-700 bg-stone-50 p-3 rounded border border-stone-100">
+                                {clip.text_translation}
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
                       )}
 
                       {clip.reasoning && (
                         <div className="mb-4">
                           <h4 className="font-medium text-black mb-2">AI 分析</h4>
-                          <p className="text-sm text-gray-600">{clip.reasoning}</p>
+                          <p className="text-sm text-gray-600 whitespace-pre-wrap">{clip.reasoning}</p>
                         </div>
                       )}
 

@@ -4,10 +4,12 @@ Clip repository - handles all database operations for generated clips.
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text as sa_text
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+_CLIP_TEXT_TRANSLATION_UNSET = object()
 
 
 class ClipRepository:
@@ -32,67 +34,89 @@ class ClipRepository:
         value_score: int = 0,
         shareability_score: int = 0,
         hook_type: Optional[str] = None,
+        text_translation: Optional[str] = None,
     ) -> str:
         """Create a new clip record and return its ID."""
+        base_params = {
+            "task_id": task_id,
+            "filename": filename,
+            "file_path": file_path,
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration": duration,
+            "text": text,
+            "relevance_score": relevance_score,
+            "reasoning": reasoning,
+            "clip_order": clip_order,
+            "virality_score": virality_score,
+            "hook_score": hook_score,
+            "engagement_score": engagement_score,
+            "value_score": value_score,
+            "shareability_score": shareability_score,
+            "hook_type": hook_type,
+            "text_translation": text_translation,
+        }
         try:
             result = await db.execute(
                 sa_text("""
                     INSERT INTO generated_clips
                     (task_id, filename, file_path, start_time, end_time, duration,
-                     text, relevance_score, reasoning, clip_order,
+                     text, text_translation, relevance_score, reasoning, clip_order,
                      virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
                      created_at)
                     VALUES
                     (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                     :text, :relevance_score, :reasoning, :clip_order,
+                     :text, :text_translation, :relevance_score, :reasoning, :clip_order,
                      :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
                      NOW())
                     RETURNING id
                 """),
-                {
-                    "task_id": task_id,
-                    "filename": filename,
-                    "file_path": file_path,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "duration": duration,
-                    "text": text,
-                    "relevance_score": relevance_score,
-                    "reasoning": reasoning,
-                    "clip_order": clip_order,
-                    "virality_score": virality_score,
-                    "hook_score": hook_score,
-                    "engagement_score": engagement_score,
-                    "value_score": value_score,
-                    "shareability_score": shareability_score,
-                    "hook_type": hook_type,
-                },
+                base_params,
             )
         except Exception:
             await db.rollback()
-            result = await db.execute(
-                sa_text("""
-                    INSERT INTO generated_clips
-                    (task_id, filename, file_path, start_time, end_time, duration,
-                     text, relevance_score, reasoning, clip_order, created_at)
-                    VALUES
-                    (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                     :text, :relevance_score, :reasoning, :clip_order, NOW())
-                    RETURNING id
-                """),
-                {
-                    "task_id": task_id,
-                    "filename": filename,
-                    "file_path": file_path,
-                    "start_time": start_time,
-                    "end_time": end_time,
-                    "duration": duration,
-                    "text": text,
-                    "relevance_score": relevance_score,
-                    "reasoning": reasoning,
-                    "clip_order": clip_order,
-                },
-            )
+            try:
+                result = await db.execute(
+                    sa_text("""
+                        INSERT INTO generated_clips
+                        (task_id, filename, file_path, start_time, end_time, duration,
+                         text, relevance_score, reasoning, clip_order,
+                         virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                         created_at)
+                        VALUES
+                        (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
+                         :text, :relevance_score, :reasoning, :clip_order,
+                         :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
+                         NOW())
+                        RETURNING id
+                    """),
+                    {k: v for k, v in base_params.items() if k != "text_translation"},
+                )
+            except Exception:
+                await db.rollback()
+                result = await db.execute(
+                    sa_text("""
+                        INSERT INTO generated_clips
+                        (task_id, filename, file_path, start_time, end_time, duration,
+                         text, relevance_score, reasoning, clip_order, created_at)
+                        VALUES
+                        (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
+                         :text, :relevance_score, :reasoning, :clip_order, NOW())
+                        RETURNING id
+                    """),
+                    {
+                        "task_id": task_id,
+                        "filename": filename,
+                        "file_path": file_path,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "duration": duration,
+                        "text": text,
+                        "relevance_score": relevance_score,
+                        "reasoning": reasoning,
+                        "clip_order": clip_order,
+                    },
+                )
         clip_id = result.scalar()
         if not clip_id:
             raise RuntimeError("Failed to create clip: no ID returned")
@@ -106,7 +130,7 @@ class ClipRepository:
             result = await db.execute(
                 sa_text("""
                     SELECT id, filename, file_path, start_time, end_time, duration,
-                           text, relevance_score, reasoning, clip_order, created_at,
+                           text, text_translation, relevance_score, reasoning, clip_order, created_at,
                            virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type
                     FROM generated_clips
                     WHERE task_id = :task_id
@@ -116,16 +140,30 @@ class ClipRepository:
             )
         except Exception:
             await db.rollback()
-            result = await db.execute(
-                sa_text("""
-                    SELECT id, filename, file_path, start_time, end_time, duration,
-                           text, relevance_score, reasoning, clip_order, created_at
-                    FROM generated_clips
-                    WHERE task_id = :task_id
-                    ORDER BY clip_order ASC
-                """),
-                {"task_id": task_id},
-            )
+            try:
+                result = await db.execute(
+                    sa_text("""
+                        SELECT id, filename, file_path, start_time, end_time, duration,
+                               text, relevance_score, reasoning, clip_order, created_at,
+                               virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type
+                        FROM generated_clips
+                        WHERE task_id = :task_id
+                        ORDER BY clip_order ASC
+                    """),
+                    {"task_id": task_id},
+                )
+            except Exception:
+                await db.rollback()
+                result = await db.execute(
+                    sa_text("""
+                        SELECT id, filename, file_path, start_time, end_time, duration,
+                               text, relevance_score, reasoning, clip_order, created_at
+                        FROM generated_clips
+                        WHERE task_id = :task_id
+                        ORDER BY clip_order ASC
+                    """),
+                    {"task_id": task_id},
+                )
 
         clips = []
         for row in result.fetchall():
@@ -138,17 +176,18 @@ class ClipRepository:
                     "end_time": row.end_time,
                     "duration": row.duration,
                     "text": row.text,
+                    "text_translation": getattr(row, "text_translation", None),
                     "relevance_score": row.relevance_score,
                     "reasoning": row.reasoning,
                     "clip_order": row.clip_order,
                     "created_at": row.created_at.isoformat(),
                     "video_url": f"/clips/{row.filename}",
-                    "virality_score": row.virality_score or 0,
-                    "hook_score": row.hook_score or 0,
-                    "engagement_score": row.engagement_score or 0,
-                    "value_score": row.value_score or 0,
-                    "shareability_score": row.shareability_score or 0,
-                    "hook_type": row.hook_type,
+                    "virality_score": getattr(row, "virality_score", None) or 0,
+                    "hook_score": getattr(row, "hook_score", None) or 0,
+                    "engagement_score": getattr(row, "engagement_score", None) or 0,
+                    "value_score": getattr(row, "value_score", None) or 0,
+                    "shareability_score": getattr(row, "shareability_score", None) or 0,
+                    "hook_type": getattr(row, "hook_type", None),
                 }
             )
 
@@ -197,7 +236,7 @@ class ClipRepository:
                 sa_text(
                     """
                     SELECT id, task_id, filename, file_path, start_time, end_time, duration,
-                           text, relevance_score, reasoning, clip_order,
+                           text, text_translation, relevance_score, reasoning, clip_order,
                            virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
                            created_at
                     FROM generated_clips
@@ -208,17 +247,33 @@ class ClipRepository:
             )
         except Exception:
             await db.rollback()
-            result = await db.execute(
-                sa_text(
-                    """
-                    SELECT id, task_id, filename, file_path, start_time, end_time, duration,
-                           text, relevance_score, reasoning, clip_order, created_at
-                    FROM generated_clips
-                    WHERE id = :clip_id
-                    """
-                ),
-                {"clip_id": clip_id},
-            )
+            try:
+                result = await db.execute(
+                    sa_text(
+                        """
+                        SELECT id, task_id, filename, file_path, start_time, end_time, duration,
+                               text, relevance_score, reasoning, clip_order,
+                               virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                               created_at
+                        FROM generated_clips
+                        WHERE id = :clip_id
+                        """
+                    ),
+                    {"clip_id": clip_id},
+                )
+            except Exception:
+                await db.rollback()
+                result = await db.execute(
+                    sa_text(
+                        """
+                        SELECT id, task_id, filename, file_path, start_time, end_time, duration,
+                               text, relevance_score, reasoning, clip_order, created_at
+                        FROM generated_clips
+                        WHERE id = :clip_id
+                        """
+                    ),
+                    {"clip_id": clip_id},
+                )
         row = result.fetchone()
         if not row:
             return None
@@ -232,15 +287,16 @@ class ClipRepository:
             "end_time": row.end_time,
             "duration": row.duration,
             "text": row.text,
+            "text_translation": getattr(row, "text_translation", None),
             "relevance_score": row.relevance_score,
             "reasoning": row.reasoning,
             "clip_order": row.clip_order,
-            "virality_score": row.virality_score or 0,
-            "hook_score": row.hook_score or 0,
-            "engagement_score": row.engagement_score or 0,
-            "value_score": row.value_score or 0,
-            "shareability_score": row.shareability_score or 0,
-            "hook_type": row.hook_type,
+            "virality_score": getattr(row, "virality_score", None) or 0,
+            "hook_score": getattr(row, "hook_score", None) or 0,
+            "engagement_score": getattr(row, "engagement_score", None) or 0,
+            "value_score": getattr(row, "value_score", None) or 0,
+            "shareability_score": getattr(row, "shareability_score", None) or 0,
+            "hook_type": getattr(row, "hook_type", None),
             "created_at": row.created_at.isoformat(),
             "video_url": f"/clips/{row.filename}",
         }
@@ -255,32 +311,72 @@ class ClipRepository:
         end_time: str,
         duration: float,
         text: str,
+        text_translation: Any = _CLIP_TEXT_TRANSLATION_UNSET,
     ) -> None:
         """Update core clip metadata and file path."""
-        await db.execute(
-            sa_text(
-                """
-                UPDATE generated_clips
-                SET filename = :filename,
-                    file_path = :file_path,
-                    start_time = :start_time,
-                    end_time = :end_time,
-                    duration = :duration,
-                    text = :text,
-                    updated_at = NOW()
-                WHERE id = :clip_id
-                """
-            ),
-            {
-                "clip_id": clip_id,
-                "filename": filename,
-                "file_path": file_path,
-                "start_time": start_time,
-                "end_time": end_time,
-                "duration": duration,
-                "text": text,
-            },
-        )
+        base_params = {
+            "clip_id": clip_id,
+            "filename": filename,
+            "file_path": file_path,
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration": duration,
+            "text": text,
+        }
+        if text_translation is _CLIP_TEXT_TRANSLATION_UNSET:
+            await db.execute(
+                sa_text(
+                    """
+                    UPDATE generated_clips
+                    SET filename = :filename,
+                        file_path = :file_path,
+                        start_time = :start_time,
+                        end_time = :end_time,
+                        duration = :duration,
+                        text = :text,
+                        updated_at = NOW()
+                    WHERE id = :clip_id
+                    """
+                ),
+                base_params,
+            )
+        else:
+            try:
+                await db.execute(
+                    sa_text(
+                        """
+                        UPDATE generated_clips
+                        SET filename = :filename,
+                            file_path = :file_path,
+                            start_time = :start_time,
+                            end_time = :end_time,
+                            duration = :duration,
+                            text = :text,
+                            text_translation = :text_translation,
+                            updated_at = NOW()
+                        WHERE id = :clip_id
+                        """
+                    ),
+                    {**base_params, "text_translation": text_translation},
+                )
+            except Exception:
+                await db.rollback()
+                await db.execute(
+                    sa_text(
+                        """
+                        UPDATE generated_clips
+                        SET filename = :filename,
+                            file_path = :file_path,
+                            start_time = :start_time,
+                            end_time = :end_time,
+                            duration = :duration,
+                            text = :text,
+                            updated_at = NOW()
+                        WHERE id = :clip_id
+                        """
+                    ),
+                    base_params,
+                )
         await db.commit()
 
     @staticmethod

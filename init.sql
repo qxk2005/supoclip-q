@@ -84,6 +84,7 @@ CREATE TABLE generated_clips (
     end_time VARCHAR(20) NOT NULL,   -- MM:SS format
     duration FLOAT NOT NULL,         -- Duration in seconds
     text TEXT,                       -- Transcript text for this clip
+    text_translation TEXT,           -- Simplified Chinese translation when transcript is English
     relevance_score FLOAT NOT NULL,
     reasoning TEXT,                  -- AI reasoning for selection
     clip_order INTEGER NOT NULL,     -- Order within the task

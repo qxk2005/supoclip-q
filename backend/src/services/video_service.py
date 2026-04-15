@@ -23,8 +23,15 @@ from ..video_utils import (
     load_cached_transcript_data,
     should_use_bilingual_subtitles,
 )
-from ..subtitle_translation import apply_bilingual_phrase_translations
-from ..ai import get_most_relevant_parts_by_transcript
+from ..subtitle_translation import (
+    apply_bilingual_phrase_translations,
+    fill_missing_segment_text_translations_zh,
+)
+from ..ai import (
+    TranscriptSegment,
+    _virality_dict_from_segment_json,
+    get_most_relevant_parts_by_transcript,
+)
 from ..config import Config
 
 logger = logging.getLogger(__name__)
@@ -258,6 +265,8 @@ class VideoService:
                 "end_time": segment["end_time"],
                 "duration": duration,
                 "text": segment.get("text", ""),
+                "text_translation": segment.get("text_translation")
+                or segment.get("text_zh"),
                 "relevance_score": segment.get("relevance_score", 0.0),
                 "reasoning": segment.get("reasoning", ""),
                 "virality_score": segment.get("virality_score", 0),
@@ -299,25 +308,89 @@ class VideoService:
         """Turn AI analysis into render-ready segment dicts."""
         raw_segments = relevant_parts.most_relevant_segments
         segments_json: List[Dict[str, Any]] = []
+        allowed_hooks = (
+            "question",
+            "statement",
+            "statistic",
+            "story",
+            "contrast",
+            "none",
+        )
+
         for segment in raw_segments:
             if isinstance(segment, dict):
+                v = _virality_dict_from_segment_json(segment)
+                raw_ht = segment.get("hook_type")
+                hook_type = (
+                    raw_ht if isinstance(raw_ht, str) and raw_ht in allowed_hooks else None
+                )
+                tz = segment.get("text_zh") or segment.get("text_translation")
+                tz = (tz or "").strip() or None
                 segments_json.append(
                     {
                         "start_time": segment.get("start_time"),
                         "end_time": segment.get("end_time"),
                         "text": segment.get("text", ""),
+                        "text_translation": tz,
                         "relevance_score": segment.get("relevance_score", 0.0),
                         "reasoning": segment.get("reasoning", ""),
+                        "virality_score": v["total_score"],
+                        "hook_score": v["hook_score"],
+                        "engagement_score": v["engagement_score"],
+                        "value_score": v["value_score"],
+                        "shareability_score": v["shareability_score"],
+                        "hook_type": hook_type,
                     }
                 )
-            else:
+            elif isinstance(segment, TranscriptSegment):
+                vir = segment.virality
+                tz = (getattr(segment, "text_zh", None) or "").strip() or None
+                hook_type = None
+                if vir:
+                    hook_type = (
+                        vir.hook_type
+                        if vir.hook_type in allowed_hooks
+                        else "none"
+                    )
                 segments_json.append(
                     {
                         "start_time": segment.start_time,
                         "end_time": segment.end_time,
                         "text": segment.text,
+                        "text_translation": tz,
                         "relevance_score": segment.relevance_score,
                         "reasoning": segment.reasoning,
+                        "virality_score": vir.total_score if vir else 0,
+                        "hook_score": vir.hook_score if vir else 0,
+                        "engagement_score": vir.engagement_score if vir else 0,
+                        "value_score": vir.value_score if vir else 0,
+                        "shareability_score": vir.shareability_score if vir else 0,
+                        "hook_type": hook_type,
+                    }
+                )
+            else:
+                vir = getattr(segment, "virality", None)
+                text_zh = getattr(segment, "text_zh", None)
+                tz = (text_zh or "").strip() or None
+                hook_type = None
+                if vir and getattr(vir, "hook_type", None) in allowed_hooks:
+                    hook_type = vir.hook_type
+                segments_json.append(
+                    {
+                        "start_time": getattr(segment, "start_time", ""),
+                        "end_time": getattr(segment, "end_time", ""),
+                        "text": getattr(segment, "text", "") or "",
+                        "text_translation": tz,
+                        "relevance_score": float(
+                            getattr(segment, "relevance_score", 0.0) or 0.0
+                        ),
+                        "reasoning": getattr(segment, "reasoning", "") or "",
+                        "virality_score": vir.total_score if vir else 0,
+                        "hook_score": vir.hook_score if vir else 0,
+                        "engagement_score": vir.engagement_score if vir else 0,
+                        "value_score": vir.value_score if vir else 0,
+                        "shareability_score": vir.shareability_score if vir else 0,
+                        "hook_type": hook_type,
                     }
                 )
         if processing_mode == "fast":
@@ -467,7 +540,13 @@ class VideoService:
                     relevant_parts = None
 
             if relevant_parts is None:
-                final_lang = language or detected_lang or "en"
+                # "auto" is truthy and would incorrectly skip detected_lang
+                lang_raw = (language or "").strip().lower()
+                final_lang = (
+                    language
+                    if language and lang_raw not in ("auto", "unknown", "")
+                    else (detected_lang or "en")
+                )
                 relevant_parts = await VideoService.analyze_transcript(
                     transcript,
                     chunk_size=chunk_size,
@@ -499,6 +578,18 @@ class VideoService:
                     )
                 except Exception as e:
                     logger.warning("Bilingual translation skipped: %s", e)
+
+            if segments_json:
+                if progress_callback:
+                    await progress_callback(
+                        64,
+                        "Translating clip transcripts to Chinese...",
+                        "processing",
+                    )
+                try:
+                    await fill_missing_segment_text_translations_zh(segments_json)
+                except Exception as e:
+                    logger.warning("Clip transcript zh translation fill skipped: %s", e)
 
             if progress_callback:
                 await progress_callback(70, "Creating video clips...", "processing")

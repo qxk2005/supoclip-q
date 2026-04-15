@@ -34,7 +34,10 @@ from ..video_utils import (
     load_cached_transcript_data,
     should_use_bilingual_subtitles,
 )
-from ..subtitle_translation import apply_bilingual_phrase_translations
+from ..subtitle_translation import (
+    apply_bilingual_phrase_translations,
+    fill_missing_segment_text_translations_zh,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +376,8 @@ class TaskService:
                     value_score=clip_info.get("value_score", 0),
                     shareability_score=clip_info.get("shareability_score", 0),
                     hook_type=clip_info.get("hook_type"),
+                    text_translation=clip_info.get("text_translation")
+                    or clip_info.get("text_zh"),
                 )
                 await self.db.commit()
                 clip_ids.append(clip_id)
@@ -712,6 +717,14 @@ class TaskService:
             except Exception as e:
                 logger.warning("Regenerate: bilingual translation skipped: %s", e)
 
+        if segments:
+            try:
+                await fill_missing_segment_text_translations_zh(segments)
+            except Exception as e:
+                logger.warning(
+                    "Regenerate: clip transcript zh translation fill skipped: %s", e
+                )
+
         clips_info = await self.video_service.create_video_clips(
             video_path,
             segments,
@@ -750,6 +763,8 @@ class TaskService:
                 value_score=clip_info.get("value_score", 0),
                 shareability_score=clip_info.get("shareability_score", 0),
                 hook_type=clip_info.get("hook_type"),
+                text_translation=clip_info.get("text_translation")
+                or clip_info.get("text_zh"),
             )
             clip_ids.append(clip_id)
 
@@ -842,6 +857,7 @@ class TaskService:
             value_score=clip.get("value_score", 0),
             shareability_score=clip.get("shareability_score", 0),
             hook_type=clip.get("hook_type"),
+            text_translation=clip.get("text_translation"),
         )
 
         await self.clip_repo.reorder_task_clips(self.db, task_id)
@@ -868,6 +884,12 @@ class TaskService:
         end_time = ordered[-1]["end_time"]
         duration = sum(float(c.get("duration", 0.0)) for c in ordered)
         text = " ".join((c.get("text") or "").strip() for c in ordered if c.get("text"))
+        zh_parts = [
+            (c.get("text_translation") or "").strip()
+            for c in ordered
+            if (c.get("text_translation") or "").strip()
+        ]
+        merged_zh = "\n".join(zh_parts) if zh_parts else None
 
         first = ordered[0]
         await self.clip_repo.update_clip(
@@ -879,6 +901,7 @@ class TaskService:
             end_time,
             duration,
             text,
+            text_translation=merged_zh,
         )
 
         for clip in ordered[1:]:
