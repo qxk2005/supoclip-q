@@ -288,6 +288,9 @@ export default function TaskPage() {
     // Only connect to SSE if task is queued or processing
     if (taskStatus !== "queued" && taskStatus !== "processing") return;
 
+    /** Set when the stream ends normally (server `close` or React cleanup) — browser still fires `error` on EOF. */
+    let expectDisconnect = false;
+
     const eventSource = new EventSource(`${taskApiUrl}/${params.id}/progress`);
 
     console.log("📡 Connected to SSE for real-time progress");
@@ -334,6 +337,7 @@ export default function TaskPage() {
     });
 
     eventSource.addEventListener("close", async (e) => {
+      expectDisconnect = true;
       const data = JSON.parse(e.data);
       console.log("✅ Task completed:", data.status);
       eventSource.close();
@@ -343,17 +347,21 @@ export default function TaskPage() {
       triggerAutoRefresh();
     });
 
-    eventSource.addEventListener("error", (e) => {
-      console.error("❌ SSE error:", e);
-      const maybeMessageEvent = e as MessageEvent<string>;
-      if (typeof maybeMessageEvent.data === "string" && maybeMessageEvent.data.length > 0) {
-        const data = JSON.parse(maybeMessageEvent.data);
-        setError(data.error || "连接异常");
+    eventSource.addEventListener("error", () => {
+      if (expectDisconnect) {
+        return;
       }
+      expectDisconnect = true;
+      // EventSource `error` passes a generic Event (logs as `{}`); use readyState instead.
+      const rs = eventSource.readyState;
+      const stateName =
+        rs === EventSource.CONNECTING ? "CONNECTING" : rs === EventSource.OPEN ? "OPEN" : "CLOSED";
+      console.warn("SSE connection lost:", { readyState: rs, stateName, url: eventSource.url });
       eventSource.close();
     });
 
     return () => {
+      expectDisconnect = true;
       console.log("🔌 Disconnecting SSE");
       eventSource.close();
     };
