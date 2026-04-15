@@ -60,6 +60,20 @@ def build_task_service() -> TaskService:
     config.resend_api_key = "re_test"
     config.resend_from_email = "SupoClip <noreply@example.com>"
     service = TaskService(db=AsyncMock(), config=config)
+    service.task_repo.get_task_by_id = AsyncMock(
+        return_value={
+            "id": "task-1",
+            "user_id": "user-1",
+            "chunk_size": 15000,
+            "language": "auto",
+            "include_broll": False,
+            "professional_hotwords": None,
+            "bilingual_subtitles_mode": "auto",
+            "audio_fade_in": False,
+            "audio_fade_out": False,
+            "generated_clips_ids": [],
+        }
+    )
     service.cache_repo.get_cache = AsyncMock(return_value=None)
     service.cache_repo.upsert_cache = AsyncMock()
     service.task_repo.update_task_runtime_metadata = AsyncMock()
@@ -80,6 +94,7 @@ def build_task_service() -> TaskService:
             "key_topics": [],
             "transcript": "Transcript",
             "analysis_json": "{}",
+            "use_bilingual_subtitles": False,
         }
     )
     return service
@@ -218,6 +233,7 @@ async def test_process_task_keeps_generated_clips_standalone():
             "key_topics": [],
             "transcript": "Transcript",
             "analysis_json": "{}",
+            "use_bilingual_subtitles": False,
         }
     )
 

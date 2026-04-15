@@ -8,10 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 import json
 import logging
-from typing import Dict, Any
+from typing import Any, Dict, Literal, Optional
 import inspect
 import re
-from typing import Literal
 
 from ...database import get_db
 from ...database import AsyncSessionLocal
@@ -47,6 +46,33 @@ def _normalize_font_family(value: Any, default: str = "TikTokSans-Regular") -> s
     if isinstance(value, str) and value.strip():
         return value.strip()
     return default
+
+
+def _normalize_bilingual_subtitles_mode(value: Any, default: str = "auto") -> str:
+    """auto: English-only videos get CN+EN; on: always translate when possible; off: single language."""
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("on", "true", "1", "yes"):
+            return "on"
+        if v in ("off", "false", "0", "no"):
+            return "off"
+        if v == "auto":
+            return "auto"
+    return default
+
+
+def _normalize_professional_hotwords(value: Any) -> Optional[str]:
+    """Accept optional glossary text; cap length to keep prompts and DB rows bounded."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not s:
+        return None
+    return s[:8000]
 
 
 def _coerce_bool(value: Any, default: bool = False) -> bool:
@@ -148,6 +174,12 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     add_subtitles = _coerce_bool(data.get("add_subtitles", True), True)
     audio_fade_in = _coerce_bool(data.get("audio_fade_in", False), False)
     audio_fade_out = _coerce_bool(data.get("audio_fade_out", False), False)
+    professional_hotwords = _normalize_professional_hotwords(
+        data.get("professional_hotwords")
+    )
+    bilingual_subtitles_mode = _normalize_bilingual_subtitles_mode(
+        data.get("bilingual_subtitles_mode", "auto")
+    )
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -172,6 +204,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             language=language,
             audio_fade_in=audio_fade_in,
             audio_fade_out=audio_fade_out,
+            professional_hotwords=professional_hotwords,
+            bilingual_subtitles_mode=bilingual_subtitles_mode,
         )
 
         # Get source type for worker
@@ -198,6 +232,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
                 "language": language,
                 "audio_fade_in": audio_fade_in,
                 "audio_fade_out": audio_fade_out,
+                "professional_hotwords": professional_hotwords,
             },
         )
 
@@ -213,6 +248,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
                     "source_type": source_type,
                     "output_format": output_format,
                     "add_subtitles": add_subtitles,
+                    "professional_hotwords": professional_hotwords,
                 }),
                 ex=60 * 60 * 24 * 7,
             )
@@ -845,6 +881,9 @@ async def resume_task(
                 "language": task.get("language") or "auto",
                 "audio_fade_in": bool(task.get("audio_fade_in", False)),
                 "audio_fade_out": bool(task.get("audio_fade_out", False)),
+                "professional_hotwords": _normalize_professional_hotwords(
+                    task.get("professional_hotwords")
+                ),
             },
         )
 

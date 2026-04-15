@@ -32,6 +32,8 @@ class TaskRepository:
         language: str = "auto",
         audio_fade_in: bool = False,
         audio_fade_out: bool = False,
+        professional_hotwords: Optional[str] = None,
+        bilingual_subtitles_mode: str = "auto",
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -41,13 +43,15 @@ class TaskRepository:
                     INSERT INTO tasks (
                         id, user_id, source_id, status, font_family, font_size, font_color,
                         caption_template, include_broll, processing_mode, chunk_size, language,
-                        audio_fade_in, audio_fade_out,
+                        audio_fade_in, audio_fade_out, professional_hotwords,
+                        bilingual_subtitles_mode,
                         created_at, updated_at
                     )
                     VALUES (
                         :task_id, :user_id, :source_id, :status, :font_family, :font_size, :font_color,
                         :caption_template, :include_broll, :processing_mode, :chunk_size, :language,
-                        :audio_fade_in, :audio_fade_out,
+                        :audio_fade_in, :audio_fade_out, :professional_hotwords,
+                        :bilingual_subtitles_mode,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -67,6 +71,8 @@ class TaskRepository:
                     "language": language,
                     "audio_fade_in": audio_fade_in,
                     "audio_fade_out": audio_fade_out,
+                    "professional_hotwords": professional_hotwords,
+                    "bilingual_subtitles_mode": bilingual_subtitles_mode,
                 },
             )
         except Exception as first_err:
@@ -116,6 +122,8 @@ class TaskRepository:
                         language = :language,
                         audio_fade_in = :audio_fade_in,
                         audio_fade_out = :audio_fade_out,
+                        professional_hotwords = :professional_hotwords,
+                        bilingual_subtitles_mode = :bilingual_subtitles_mode,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -129,6 +137,8 @@ class TaskRepository:
                     "language": language,
                     "audio_fade_in": audio_fade_in,
                     "audio_fade_out": audio_fade_out,
+                    "professional_hotwords": professional_hotwords,
+                    "bilingual_subtitles_mode": bilingual_subtitles_mode,
                 },
             )
             await db.commit()
@@ -182,6 +192,10 @@ class TaskRepository:
             "processing_mode": getattr(row, "processing_mode", "fast"),
             "chunk_size": getattr(row, "chunk_size", 15000),
             "language": getattr(row, "language", "auto"),
+            "professional_hotwords": getattr(row, "professional_hotwords", None),
+            "bilingual_subtitles_mode": getattr(
+                row, "bilingual_subtitles_mode", "auto"
+            ),
             "cache_hit": getattr(row, "cache_hit", False),
             "error_code": getattr(row, "error_code", None),
             "stage_timings_json": getattr(row, "stage_timings_json", None),

@@ -62,6 +62,8 @@ model Task {
   status               String    @default("pending") @db.VarChar(20)
   chunk_size                        Int?         @default(15000)
   language                          String?      @default("auto") @db.VarChar(10)
+  professional_hotwords             String?      @db.Text
+  bilingual_subtitles_mode          String       @default("auto") @db.VarChar(10)
 
   // Tracking completion notifications
   completion_notification_sent_at DateTime?

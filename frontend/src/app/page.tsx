@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -105,6 +106,7 @@ export default function Home() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [processingMode, setProcessingMode] = useState("fast");
   const [chunkSize, setChunkSize] = useState("15000");
+  const [professionalHotwords, setProfessionalHotwords] = useState("");
   const [language, setLanguage] = useState("auto");
   const [error, setError] = useState<string | null>(null);
   const [sourceTitle, setSourceTitle] = useState<string | null>(null);
@@ -131,6 +133,10 @@ export default function Home() {
   const [brollAvailable, setBrollAvailable] = useState(false);
   const [outputFormat, setOutputFormat] = useState<"vertical" | "original">("vertical");
   const [addSubtitles, setAddSubtitles] = useState(true);
+  /** auto: 纯英文视频默认中英双语；on/off：强制开/关 */
+  const [bilingualSubtitlesMode, setBilingualSubtitlesMode] = useState<
+    "auto" | "on" | "off"
+  >("auto");
   const [audioFadeIn, setAudioFadeIn] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(PREF_AUDIO_FADE_IN) === "1";
@@ -502,8 +508,14 @@ export default function Home() {
           processing_mode: processingMode,
           chunk_size: parseInt(chunkSize, 10) || 15000,
           language: language,
+          ...(professionalHotwords.trim()
+            ? {
+                professional_hotwords: professionalHotwords.trim().slice(0, 8000),
+              }
+            : {}),
           output_format: outputFormat,
           add_subtitles: addSubtitles,
+          bilingual_subtitles_mode: bilingualSubtitlesMode,
           audio_fade_in: audioFadeIn,
           audio_fade_out: audioFadeOut,
         }),
@@ -968,6 +980,24 @@ export default function Home() {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <label htmlFor="professional-hotwords" className="text-sm text-stone-600">
+                      专业热词（可选）
+                    </label>
+                    <Textarea
+                      id="professional-hotwords"
+                      value={professionalHotwords}
+                      onChange={(e) => setProfessionalHotwords(e.target.value)}
+                      placeholder={"每行一个或逗号分隔，例如：\nKubernetes\nTransformer\n大语言模型"}
+                      disabled={isLoading}
+                      rows={4}
+                      className="resize-y min-h-[88px] text-sm"
+                    />
+                    <p className="text-xs text-stone-400">
+                      用于纠正语音识别易错的产品名、人名、术语；会参与 faster-whisper 提示与大模型选片时的片段文案。
+                    </p>
+                  </div>
+
                   {/* Processing Mode Selector */}
                   <div className="space-y-2">
                     <label className="text-sm text-stone-600 flex items-center gap-2">
@@ -1083,6 +1113,36 @@ export default function Home() {
                       disabled={isLoading}
                     />
                   </div>
+
+                  {addSubtitles && (
+                    <div className="flex flex-col gap-2 p-3 border rounded-lg bg-stone-50 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Languages className="w-4 h-4 text-sky-600 shrink-0" />
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-medium text-stone-900">双语字幕</h3>
+                          <p className="text-xs text-stone-500">
+                            自动：识别为纯英文时，主行中文（标准字号）、辅行英文在下方（小 2 号）
+                          </p>
+                        </div>
+                      </div>
+                      <Select
+                        value={bilingualSubtitlesMode}
+                        onValueChange={(v) =>
+                          setBilingualSubtitlesMode(v as "auto" | "on" | "off")
+                        }
+                        disabled={isLoading}
+                      >
+                        <SelectTrigger className="w-full sm:w-[140px] shrink-0 bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">自动</SelectItem>
+                          <SelectItem value="on">始终双语</SelectItem>
+                          <SelectItem value="off">关闭</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
                     <div className="flex items-center gap-3">

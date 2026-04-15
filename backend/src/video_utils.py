@@ -6,6 +6,7 @@ Optimized for MoviePy v2, and high-quality output.
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import os
+import re
 import logging
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
@@ -136,7 +137,9 @@ class VideoProcessor:
 
 
 def get_video_transcript(
-    video_path: Path, speech_model: str = "base"
+    video_path: Path,
+    speech_model: str = "base",
+    initial_prompt: Optional[str] = None,
 ) -> Tuple[str, str]:
     """
     Get transcript using faster-whisper and return formatted text and language.
@@ -146,7 +149,10 @@ def get_video_transcript(
     try:
         resolved_model = resolve_whisper_model_size(speech_model)
         model = WhisperModel(resolved_model, device="cpu", compute_type="int8")
-        segments, info = model.transcribe(str(video_path), word_timestamps=True)
+        transcribe_kw: Dict[str, Any] = {"word_timestamps": True}
+        if initial_prompt and initial_prompt.strip():
+            transcribe_kw["initial_prompt"] = initial_prompt.strip()[:2000]
+        segments, info = model.transcribe(str(video_path), **transcribe_kw)
 
         transcript_data = {
             "segments": [],
@@ -681,6 +687,196 @@ def get_words_in_range(
                     })
     return relevant_words
 
+
+def normalize_subtitle_phrase_key(tokens: List[str]) -> str:
+    """Stable cache key for a subtitle phrase built from word tokens."""
+    parts: List[str] = []
+    for raw in tokens:
+        t = raw.strip().lower()
+        t = re.sub(r"\s+", " ", t)
+        if t:
+            parts.append(t)
+    return " ".join(parts)
+
+
+def collect_bilingual_phrase_pairs(
+    transcript_data: Dict[str, Any],
+    segments: List[Dict[str, Any]],
+) -> List[Tuple[str, str]]:
+    """
+    Unique (normalized_key, display_en) pairs for non-overlapping 3-word groups
+    inside each clip segment's time range.
+    """
+    seen: set[str] = set()
+    out: List[Tuple[str, str]] = []
+    for seg in segments:
+        st = parse_timestamp_to_seconds(seg["start_time"])
+        et = parse_timestamp_to_seconds(seg["end_time"])
+        words = get_words_in_range(transcript_data, st, et)
+        for i in range(0, len(words), 3):
+            group = words[i : i + 3]
+            if not group:
+                continue
+            tokens = [w["text"] for w in group]
+            display_en = " ".join(t.strip() for t in tokens).strip()
+            if not display_en:
+                continue
+            key = normalize_subtitle_phrase_key(tokens)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((key, display_en))
+    return out
+
+
+def should_use_bilingual_subtitles(
+    mode: str,
+    transcript_data: Optional[Dict[str, Any]],
+    add_subtitles: bool,
+) -> bool:
+    """Whether to render bilingual subtitles for this task."""
+    if not add_subtitles:
+        return False
+    m = (mode or "auto").strip().lower()
+    if m in ("off", "false", "0", "no"):
+        return False
+    if m in ("on", "true", "1", "yes"):
+        return bool(transcript_data and transcript_data.get("segments"))
+    if not transcript_data:
+        return False
+    lang = (transcript_data.get("language") or "").lower()
+    if not lang.startswith("en"):
+        return False
+    prob = float(transcript_data.get("language_probability") or 0.0)
+    if prob and prob < 0.35:
+        return False
+    full_text = transcript_data.get("text") or ""
+    if any("\u4e00" <= c <= "\u9fff" for c in full_text):
+        return False
+    return bool(transcript_data.get("segments"))
+
+
+def create_bilingual_static_subtitles(
+    relevant_words: List[Dict],
+    video_width: int,
+    video_height: int,
+    style_template: Dict,
+    font_family: str,
+    main_font_size: int,
+    secondary_font_size: int,
+    phrase_translations: Dict[str, str],
+) -> List[TextClip]:
+    """
+    Chinese primary (main_font_size), English secondary below (secondary_font_size).
+    Uses static grouping (3 words) regardless of karaoke/pop template.
+    """
+    subtitle_clips: List[TextClip] = []
+    position_y_base = float(style_template.get("position_y", 0.75))
+    max_text_width = get_subtitle_max_width(video_width)
+    stroke_color = style_template.get("stroke_color", "black")
+    stroke_width = style_template.get("stroke_width", 1)
+    gap = max(6, int(video_height * 0.012))
+
+    main_scaled = get_scaled_font_size(main_font_size, video_width)
+    sub_scaled = get_scaled_font_size(secondary_font_size, video_width)
+
+    zh_font = "SourceHanSansSC-Regular.otf"
+    zh_processor = VideoProcessor(
+        zh_font,
+        main_font_size,
+        style_template["font_color"],
+        text_for_font_detection="中文",
+    )
+    en_processor = VideoProcessor(
+        font_family,
+        secondary_font_size,
+        style_template["font_color"],
+        text_for_font_detection="",
+    )
+
+    words_per_subtitle = 3
+    for i in range(0, len(relevant_words), words_per_subtitle):
+        word_group = relevant_words[i : i + words_per_subtitle]
+        if not word_group:
+            continue
+
+        segment_start = word_group[0]["start"]
+        segment_end = word_group[-1]["end"]
+        segment_duration = segment_end - segment_start
+        if segment_duration < 0.1:
+            continue
+
+        tokens = [w["text"] for w in word_group]
+        en_line = " ".join(t.strip() for t in tokens).strip()
+        if not en_line:
+            continue
+        key = normalize_subtitle_phrase_key(tokens)
+        zh_line = (phrase_translations.get(key) or "").strip()
+
+        try:
+            if zh_line:
+                en_clip = (
+                    TextClip(
+                        text=en_line,
+                        font=en_processor.font_path,
+                        font_size=sub_scaled,
+                        color=style_template["font_color"],
+                        stroke_color=stroke_color if stroke_color else None,
+                        stroke_width=stroke_width,
+                        size=(max_text_width, None),
+                        align="South",
+                        interline=6,
+                    )
+                    .with_duration(segment_duration)
+                    .with_start(segment_start)
+                )
+                en_h = en_clip.size[1] if en_clip.size else 40
+                en_top = get_safe_vertical_position(
+                    video_height, en_h, position_y_base
+                )
+                en_clip = en_clip.with_position(("center", en_top))
+
+                zh_clip = (
+                    TextClip(
+                        text=zh_line,
+                        font=zh_processor.font_path,
+                        font_size=main_scaled,
+                        color=style_template["font_color"],
+                        stroke_color=stroke_color if stroke_color else None,
+                        stroke_width=stroke_width,
+                        size=(max_text_width, None),
+                        align="South",
+                        interline=6,
+                    )
+                    .with_duration(segment_duration)
+                    .with_start(segment_start)
+                )
+                zh_h = zh_clip.size[1] if zh_clip.size else 40
+                zh_top_raw = en_top - gap - zh_h
+                min_top_padding = max(40, int(video_height * 0.05))
+                zh_top = max(min_top_padding, zh_top_raw)
+                zh_clip = zh_clip.with_position(("center", zh_top))
+
+                subtitle_clips.append(zh_clip)
+                subtitle_clips.append(en_clip)
+            else:
+                single = create_static_subtitles(
+                    word_group,
+                    video_width,
+                    video_height,
+                    {**style_template, "font_size": main_font_size},
+                    font_family,
+                )
+                subtitle_clips.extend(single)
+
+        except Exception as e:
+            logger.warning("Failed bilingual subtitle for '%s': %s", en_line, e)
+            continue
+
+    logger.info("Created %s bilingual subtitle elements", len(subtitle_clips))
+    return subtitle_clips
+
+
 def create_faster_whisper_subtitles(
     video_path: Path,
     clip_start: float,
@@ -691,6 +887,7 @@ def create_faster_whisper_subtitles(
     font_size: int = 24,
     font_color: str = "#FFFFFF",
     caption_template: str = "default",
+    bilingual_subtitles: bool = False,
 ) -> List[TextClip]:
     """Create subtitles using faster-whisper's precise word timing with template support."""
     transcript_data = load_cached_transcript_data(video_path)
@@ -726,27 +923,21 @@ def create_faster_whisper_subtitles(
         return []
     logger.info(f"Found {len(relevant_words)} relevant words for subtitles.")
 
-    # If bilingual mode is selected, create two sets of subtitles
-    if caption_template == "bilingual":
-        # Chinese (main) subtitles - larger, on top
-        chinese_template = template.copy()
-        chinese_template["position_y"] = 0.4  # Position higher
-        chinese_template["font_size"] = int(effective_font_size * 1.2) # Larger font
-        
-        chinese_subtitles = create_static_subtitles(
-            relevant_words, video_width, video_height, chinese_template, "SourceHanSansSC-Regular.otf"
+    if bilingual_subtitles:
+        phrase_map: Dict[str, str] = dict(
+            transcript_data.get("phrase_translations") or {}
         )
-        
-        # English (secondary) subtitles - smaller, at bottom
-        english_template = template.copy()
-        english_template["position_y"] = 0.8 # Standard bottom position
-        english_template["font_size"] = int(effective_font_size * 0.8) # Smaller font
-
-        english_subtitles = create_static_subtitles(
-            relevant_words, video_width, video_height, english_template, font_family
+        secondary_size = max(10, effective_font_size - 2)
+        return create_bilingual_static_subtitles(
+            relevant_words,
+            video_width,
+            video_height,
+            effective_template,
+            effective_font_family,
+            effective_font_size,
+            secondary_size,
+            phrase_map,
         )
-        
-        return chinese_subtitles + english_subtitles
 
     # Choose subtitle creation method based on animation type
     if animation_type == "karaoke":
@@ -1264,6 +1455,7 @@ def create_optimized_clip(
     audio_fade_in: bool = False,
     audio_fade_out: bool = False,
     processing_mode: str = "fast",
+    bilingual_subtitles: bool = False,
 ) -> bool:
     """Create clip with optional subtitles and audio fades."""
     try:
@@ -1359,6 +1551,7 @@ def create_optimized_clip(
                 font_size,
                 font_color,
                 caption_template,
+                bilingual_subtitles=bilingual_subtitles,
             )
             logger.info(f"Found {len(subtitle_clips)} subtitle clips to add.")
             final_clips.extend(subtitle_clips)
@@ -1418,6 +1611,7 @@ def create_clips_from_segments(
     audio_fade_in: bool = False,
     audio_fade_out: bool = False,
     processing_mode: str = "fast",
+    bilingual_subtitles: bool = False,
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments with template support."""
     logger.info(
@@ -1465,6 +1659,7 @@ def create_clips_from_segments(
                 audio_fade_in,
                 audio_fade_out,
                 processing_mode,
+                bilingual_subtitles,
             )
 
             if success:
@@ -1623,6 +1818,7 @@ def create_clips_with_transitions(
     audio_fade_in: bool = False,
     audio_fade_out: bool = False,
     processing_mode: str = "fast",
+    bilingual_subtitles: bool = False,
 ) -> List[Dict[str, Any]]:
     """Create standalone video clips without inter-clip transitions.
 
@@ -1647,6 +1843,7 @@ def create_clips_with_transitions(
         audio_fade_in,
         audio_fade_out,
         processing_mode,
+        bilingual_subtitles,
     )
 
 

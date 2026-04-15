@@ -29,7 +29,12 @@ from ..clip_editor import (
     merge_clip_files,
     overlay_custom_captions,
 )
-from ..video_utils import parse_timestamp_to_seconds
+from ..video_utils import (
+    parse_timestamp_to_seconds,
+    load_cached_transcript_data,
+    should_use_bilingual_subtitles,
+)
+from ..subtitle_translation import apply_bilingual_phrase_translations
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +52,14 @@ class TaskService:
         self.config = config or get_config()
 
     @staticmethod
-    def _build_cache_key(url: str, source_type: str, processing_mode: str) -> str:
-        payload = f"{source_type}|{processing_mode}|{url.strip()}"
+    def _build_cache_key(
+        url: str,
+        source_type: str,
+        processing_mode: str,
+        professional_hotwords: Optional[str] = None,
+    ) -> str:
+        hw = (professional_hotwords or "").strip()
+        payload = f"{source_type}|{processing_mode}|{hw}|{url.strip()}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _is_stale_queued_task(self, task: Dict[str, Any]) -> bool:
@@ -85,6 +96,8 @@ class TaskService:
         language: str = "auto",
         audio_fade_in: bool = False,
         audio_fade_out: bool = False,
+        professional_hotwords: Optional[str] = None,
+        bilingual_subtitles_mode: str = "auto",
     ) -> str:
         """
         Create a new task with associated source.
@@ -125,6 +138,8 @@ class TaskService:
             language=language,
             audio_fade_in=audio_fade_in,
             audio_fade_out=audio_fade_out,
+            professional_hotwords=professional_hotwords,
+            bilingual_subtitles_mode=bilingual_subtitles_mode,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -158,7 +173,15 @@ class TaskService:
             logger.info(f"Starting processing for task {task_id}")
             started_at = datetime.utcnow()
             stage_timings: Dict[str, float] = {}
-            cache_key = self._build_cache_key(url, source_type, processing_mode)
+            task_details = await self.task_repo.get_task_by_id(self.db, task_id)
+            if not task_details:
+                logger.error(f"Task details not found for task_id: {task_id}")
+                raise ValueError(f"Task details not found for task_id: {task_id}")
+
+            hotwords = (task_details.get("professional_hotwords") or "").strip() or None
+            cache_key = self._build_cache_key(
+                url, source_type, processing_mode, hotwords
+            )
 
             cache_entry = await self.cache_repo.get_cache(self.db, cache_key)
             cached_transcript = (
@@ -199,16 +222,17 @@ class TaskService:
                 if progress_callback:
                     await progress_callback(progress, message, status)
 
-            task_details = await self.task_repo.get_task_by_id(self.db, task_id)
-            if not task_details:
-                logger.error(f"Task details not found for task_id: {task_id}")
-                raise ValueError(f"Task details not found for task_id: {task_id}")
-
             chunk_size = task_details.get("chunk_size") if task_details else 15000
             language = task_details.get("language") if task_details else "auto"
 
             # Process video with progress updates
             pipeline_start = perf_counter()
+            bilingual_mode = (
+                task_details.get("bilingual_subtitles_mode") or "auto"
+            ).strip().lower()
+            if bilingual_mode not in ("auto", "on", "off"):
+                bilingual_mode = "auto"
+
             result = await self.video_service.process_video_complete(
                 url=url,
                 source_type=source_type,
@@ -226,9 +250,16 @@ class TaskService:
                 cached_analysis_json=cached_analysis_json,
                 progress_callback=update_progress,
                 should_cancel=should_cancel,
+                professional_hotwords=hotwords,
+                include_broll=bool(task_details.get("include_broll", False)),
+                bilingual_subtitles_mode=bilingual_mode,
             )
             stage_timings["pipeline_seconds"] = round(
                 perf_counter() - pipeline_start, 3
+            )
+
+            use_bilingual_subtitles = bool(
+                result.get("use_bilingual_subtitles", False)
             )
 
             # Re-fetch task so audio fade / style flags changed during analysis match clip encode
@@ -318,6 +349,7 @@ class TaskService:
                     audio_fade_in,
                     audio_fade_out,
                     processing_mode,
+                    use_bilingual_subtitles,
                 )
                 if clip_info is None:
                     continue  # Skip failed clip
@@ -646,9 +678,39 @@ class TaskService:
             if not video_path.exists():
                 raise ValueError("Source video file no longer exists")
 
-        # Generate transcript and segments
-        transcript, _ = await self.video_service.generate_transcript(video_path, processing_mode=processing_mode)
-        segments = await self.ai_service.generate_segments_from_transcript(transcript, processing_mode=processing_mode)
+        hotwords = (task.get("professional_hotwords") or "").strip() or None
+        chunk_size = task.get("chunk_size") or 15000
+        lang = task.get("language") or "auto"
+
+        transcript, detected_lang = await self.video_service.generate_transcript(
+            video_path,
+            processing_mode=processing_mode,
+            professional_hotwords=hotwords,
+        )
+        final_lang = lang if lang and lang != "auto" else (detected_lang or "en")
+        relevant = await self.video_service.analyze_transcript(
+            transcript,
+            chunk_size=chunk_size,
+            language=final_lang,
+            include_broll=bool(task.get("include_broll", False)),
+            professional_hotwords=hotwords,
+        )
+        segments = self.video_service.build_segments_json(relevant, processing_mode)
+
+        transcript_data = load_cached_transcript_data(video_path)
+        bilingual_mode = (task.get("bilingual_subtitles_mode") or "auto").strip().lower()
+        use_bilingual = should_use_bilingual_subtitles(
+            bilingual_mode,
+            transcript_data,
+            add_subtitles,
+        )
+        if use_bilingual and transcript_data and segments:
+            try:
+                await apply_bilingual_phrase_translations(
+                    video_path, transcript_data, segments
+                )
+            except Exception as e:
+                logger.warning("Regenerate: bilingual translation skipped: %s", e)
 
         clips_info = await self.video_service.create_video_clips(
             video_path,
@@ -661,7 +723,8 @@ class TaskService:
             add_subtitles,
             audio_fade_in,
             audio_fade_out,
-            processing_mode, # Passing processing_mode
+            processing_mode,
+            use_bilingual,
         )
 
         await self.clip_repo.delete_clips_by_task(self.db, task_id)

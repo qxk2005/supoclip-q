@@ -106,6 +106,7 @@ GROUNDING RULES:
 2.  Do not invent facts, tone, or context.
 3.  Each segment must correspond to a contiguous block of text in the transcript.
 4.  The text of the segment must closely match the transcript.
+5.  When the user message includes a DOMAIN GLOSSARY of professional terms, you may replace clear speech-recognition mis-hearings with the glossary spelling inside segment.text only when the transcript clearly refers to that same term. Do not change timestamps or merge non-contiguous spans; do not add topics absent from the transcript.
 
 SEGMENT SELECTION CRITERIA:
 1.  STRONG HOOKS: Attention-grabbing opening lines.
@@ -186,7 +187,10 @@ def get_transcript_agent() -> Agent[None, TranscriptAnalysis]:
 
 
 def build_transcript_analysis_prompt(
-    transcript: str, include_broll: bool = False, language: str = "en"
+    transcript: str,
+    include_broll: bool = False,
+    language: str = "en",
+    professional_hotwords: Optional[str] = None,
 ) -> str:
     """Build the grounded task prompt for transcript analysis."""
     broll_instruction = ""
@@ -201,10 +205,20 @@ def build_transcript_analysis_prompt(
     elif language and language != "en":
         lang_instruction = f"The transcript is in the language: {language}."
 
+    glossary_block = ""
+    hw = (professional_hotwords or "").strip()
+    if hw:
+        glossary_block = f"""
+DOMAIN GLOSSARY (professional / product terms; one entry per line or comma-separated):
+{hw}
+
+Use these exact spellings in segment.text when the transcript wording is a likely automatic-speech-recognition error for the same term or concept. Keep segment boundaries and timestamps strictly aligned with the transcript; do not paraphrase for style.
+"""
+
     return f"""Analyze this video transcript and identify the most engaging segments for short-form content.
 
 {lang_instruction}
-
+{glossary_block}
 The transcript is formatted as one line per timestamped span, for example:
 [00:12 - 00:21] Spoken text here
 [00:21 - 00:35] More spoken text here
@@ -466,12 +480,13 @@ async def get_most_relevant_parts_by_transcript(
     include_broll: bool = False,
     chunk_size: int = 15000,
     language: str = "en",
+    professional_hotwords: Optional[str] = None,
 ) -> TranscriptAnalysis:
     """
     Get the most relevant parts of a transcript by processing it in chunks to handle long inputs.
     """
     logger.info(
-        f"Starting AI analysis of transcript ({len(transcript)} chars), include_broll={include_broll}, chunk_size={chunk_size}, language={language}"
+        f"Starting AI analysis of transcript ({len(transcript)} chars), include_broll={include_broll}, chunk_size={chunk_size}, language={language}, has_hotwords={bool((professional_hotwords or '').strip())}"
     )
 
     # Chunking strategy to handle long transcripts
@@ -504,7 +519,10 @@ async def get_most_relevant_parts_by_transcript(
             try:
                 result = await agent.run(
                     build_transcript_analysis_prompt(
-                        transcript=chunk, include_broll=include_broll, language=language
+                        transcript=chunk,
+                        include_broll=include_broll,
+                        language=language,
+                        professional_hotwords=professional_hotwords,
                     )
                 )
 

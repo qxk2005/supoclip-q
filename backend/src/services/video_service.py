@@ -20,7 +20,10 @@ from ..video_utils import (
     create_clips_with_transitions,
     create_optimized_clip,
     parse_timestamp_to_seconds,
+    load_cached_transcript_data,
+    should_use_bilingual_subtitles,
 )
+from ..subtitle_translation import apply_bilingual_phrase_translations
 from ..ai import get_most_relevant_parts_by_transcript
 from ..config import Config
 
@@ -87,7 +90,9 @@ class VideoService:
 
     @staticmethod
     async def generate_transcript(
-        video_path: Path, processing_mode: str = "balanced"
+        video_path: Path,
+        processing_mode: str = "balanced",
+        professional_hotwords: Optional[str] = None,
     ) -> tuple[str, str]:
         """
         Generate transcript from video using faster-whisper.
@@ -104,8 +109,12 @@ class VideoService:
         else:
             speech_model = config.whisper_model
 
+        whisper_prompt: Optional[str] = None
+        if professional_hotwords and professional_hotwords.strip():
+            whisper_prompt = professional_hotwords.replace("\n", ", ").strip()[:2000]
+
         transcript, language = await run_in_thread(
-            get_video_transcript, video_path, speech_model
+            get_video_transcript, video_path, speech_model, whisper_prompt
         )
         logger.info(
             f"Transcript generated: {len(transcript)} characters, language: {language}"
@@ -114,7 +123,11 @@ class VideoService:
 
     @staticmethod
     async def analyze_transcript(
-        transcript: str, chunk_size: int, language: str = "en"
+        transcript: str,
+        chunk_size: int,
+        language: str = "en",
+        include_broll: bool = False,
+        professional_hotwords: Optional[str] = None,
     ) -> Any:
         """
         Analyze transcript with AI to find relevant segments.
@@ -122,7 +135,11 @@ class VideoService:
         """
         logger.info("Starting AI analysis of transcript")
         relevant_parts = await get_most_relevant_parts_by_transcript(
-            transcript, chunk_size=chunk_size, language=language
+            transcript,
+            include_broll=include_broll,
+            chunk_size=chunk_size,
+            language=language,
+            professional_hotwords=professional_hotwords,
         )
         logger.info(
             f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found"
@@ -142,6 +159,7 @@ class VideoService:
         audio_fade_in: bool = False,
         audio_fade_out: bool = False,
         processing_mode: str = "fast",
+        bilingual_subtitles: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Create standalone video clips from segments with optional subtitles.
@@ -167,6 +185,7 @@ class VideoService:
             audio_fade_in,
             audio_fade_out,
             processing_mode,
+            bilingual_subtitles,
         )
 
         logger.info(f"Successfully created {len(clips_info)} clips")
@@ -187,6 +206,7 @@ class VideoService:
         audio_fade_in: bool = False,
         audio_fade_out: bool = False,
         processing_mode: str = "fast",
+        bilingual_subtitles: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """Render a single clip in the thread pool and return clip_info dict, or None on failure."""
         try:
@@ -222,6 +242,7 @@ class VideoService:
                 audio_fade_in,
                 audio_fade_out,
                 processing_mode,
+                bilingual_subtitles,
             )
 
             if not success:
@@ -274,6 +295,36 @@ class VideoService:
         return "youtube" if video_id else "video_url"
 
     @staticmethod
+    def build_segments_json(relevant_parts: Any, processing_mode: str) -> List[Dict[str, Any]]:
+        """Turn AI analysis into render-ready segment dicts."""
+        raw_segments = relevant_parts.most_relevant_segments
+        segments_json: List[Dict[str, Any]] = []
+        for segment in raw_segments:
+            if isinstance(segment, dict):
+                segments_json.append(
+                    {
+                        "start_time": segment.get("start_time"),
+                        "end_time": segment.get("end_time"),
+                        "text": segment.get("text", ""),
+                        "relevance_score": segment.get("relevance_score", 0.0),
+                        "reasoning": segment.get("reasoning", ""),
+                    }
+                )
+            else:
+                segments_json.append(
+                    {
+                        "start_time": segment.start_time,
+                        "end_time": segment.end_time,
+                        "text": segment.text,
+                        "relevance_score": segment.relevance_score,
+                        "reasoning": segment.reasoning,
+                    }
+                )
+        if processing_mode == "fast":
+            segments_json = segments_json[: config.fast_mode_max_clips]
+        return segments_json
+
+    @staticmethod
     async def process_video_complete(
         url: str,
         source_type: str,
@@ -291,6 +342,9 @@ class VideoService:
         cached_analysis_json: Optional[str] = None,
         progress_callback: Optional[Callable[[int, str, str], Awaitable[None]]] = None,
         should_cancel: Optional[Callable[[], Awaitable[bool]]] = None,
+        professional_hotwords: Optional[str] = None,
+        include_broll: bool = False,
+        bilingual_subtitles_mode: str = "auto",
     ) -> Dict[str, Any]:
         """
         Complete video processing pipeline.
@@ -342,14 +396,41 @@ class VideoService:
             if progress_callback:
                 await progress_callback(30, "Generating transcript...", "processing")
 
+            need_word_timestamps = add_subtitles or (
+                (bilingual_subtitles_mode or "auto").strip().lower() != "off"
+            )
+
             transcript = cached_transcript
             detected_lang = "en"  # Default language
             if not transcript:
                 logger.info("No cached transcript found, generating new one.")
                 transcript, detected_lang = await VideoService.generate_transcript(
-                    video_path, processing_mode=processing_mode
+                    video_path,
+                    processing_mode=processing_mode,
+                    professional_hotwords=professional_hotwords,
                 )
                 logger.info(f"Transcript generated with length: {len(transcript)}")
+            elif need_word_timestamps:
+                td_check = load_cached_transcript_data(video_path)
+                if not td_check or not td_check.get("segments"):
+                    logger.info(
+                        "Cached transcript text without word timings; re-running speech-to-text."
+                    )
+                    transcript, detected_lang = await VideoService.generate_transcript(
+                        video_path,
+                        processing_mode=processing_mode,
+                        professional_hotwords=professional_hotwords,
+                    )
+
+            transcript_data = load_cached_transcript_data(video_path)
+            if transcript_data and transcript_data.get("language"):
+                detected_lang = transcript_data.get("language") or detected_lang
+
+            use_bilingual_subtitles = should_use_bilingual_subtitles(
+                bilingual_subtitles_mode,
+                transcript_data,
+                add_subtitles,
+            )
 
             # Step 3: AI analysis
             if should_cancel and await should_cancel():
@@ -388,42 +469,39 @@ class VideoService:
             if relevant_parts is None:
                 final_lang = language or detected_lang or "en"
                 relevant_parts = await VideoService.analyze_transcript(
-                    transcript, chunk_size=chunk_size, language=final_lang
+                    transcript,
+                    chunk_size=chunk_size,
+                    language=final_lang,
+                    include_broll=include_broll,
+                    professional_hotwords=professional_hotwords,
                 )
 
-            # Step 4: Create clips
+            # Step 4: segment list + optional bilingual translation
             if should_cancel and await should_cancel():
                 raise Exception("Task cancelled")
 
+            segments_json = VideoService.build_segments_json(
+                relevant_parts, processing_mode
+            )
+
+            if (
+                use_bilingual_subtitles
+                and transcript_data
+                and segments_json
+            ):
+                if progress_callback:
+                    await progress_callback(
+                        62, "Translating bilingual subtitles...", "processing"
+                    )
+                try:
+                    await apply_bilingual_phrase_translations(
+                        video_path, transcript_data, segments_json
+                    )
+                except Exception as e:
+                    logger.warning("Bilingual translation skipped: %s", e)
+
             if progress_callback:
                 await progress_callback(70, "Creating video clips...", "processing")
-
-            raw_segments = relevant_parts.most_relevant_segments
-            segments_json: List[Dict[str, Any]] = []
-            for segment in raw_segments:
-                if isinstance(segment, dict):
-                    segments_json.append(
-                        {
-                            "start_time": segment.get("start_time"),
-                            "end_time": segment.get("end_time"),
-                            "text": segment.get("text", ""),
-                            "relevance_score": segment.get("relevance_score", 0.0),
-                            "reasoning": segment.get("reasoning", ""),
-                        }
-                    )
-                else:
-                    segments_json.append(
-                        {
-                            "start_time": segment.start_time,
-                            "end_time": segment.end_time,
-                            "text": segment.text,
-                            "relevance_score": segment.relevance_score,
-                            "reasoning": segment.reasoning,
-                        }
-                    )
-
-            if processing_mode == "fast":
-                segments_json = segments_json[: config.fast_mode_max_clips]
 
             return {
                 "segments": segments_json,
@@ -433,6 +511,7 @@ class VideoService:
                 "summary": relevant_parts.summary if relevant_parts else None,
                 "key_topics": relevant_parts.key_topics if relevant_parts else None,
                 "transcript": transcript,
+                "use_bilingual_subtitles": use_bilingual_subtitles,
                 "analysis_json": json.dumps(
                     {
                         "summary": relevant_parts.summary if relevant_parts else None,
