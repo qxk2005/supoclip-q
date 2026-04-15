@@ -83,6 +83,8 @@ class TaskService:
         processing_mode: str = "fast",
         chunk_size: int = 15000,
         language: str = "auto",
+        audio_fade_in: bool = False,
+        audio_fade_out: bool = False,
     ) -> str:
         """
         Create a new task with associated source.
@@ -121,6 +123,8 @@ class TaskService:
             processing_mode=processing_mode,
             chunk_size=chunk_size,
             language=language,
+            audio_fade_in=audio_fade_in,
+            audio_fade_out=audio_fade_out,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -197,11 +201,9 @@ class TaskService:
             if not task_details:
                 logger.error(f"Task details not found for task_id: {task_id}")
                 raise ValueError(f"Task details not found for task_id: {task_id}")
-            
+
             chunk_size = task_details.get("chunk_size") if task_details else 15000
             language = task_details.get("language") if task_details else "auto"
-            audio_fade_in = task_details.get("audio_fade_in", False)
-            audio_fade_out = task_details.get("audio_fade_out", False)
 
             # Process video with progress updates
             pipeline_start = perf_counter()
@@ -226,6 +228,14 @@ class TaskService:
             stage_timings["pipeline_seconds"] = round(
                 perf_counter() - pipeline_start, 3
             )
+
+            # Re-fetch task so audio fade / style flags changed during analysis match clip encode
+            task_details = await self.task_repo.get_task_by_id(self.db, task_id)
+            if not task_details:
+                logger.error(f"Task details not found for task_id: {task_id}")
+                raise ValueError(f"Task details not found for task_id: {task_id}")
+            audio_fade_in = bool(task_details.get("audio_fade_in", False))
+            audio_fade_out = bool(task_details.get("audio_fade_out", False))
 
             await self.cache_repo.upsert_cache(
                 self.db,

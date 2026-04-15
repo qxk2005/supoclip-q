@@ -569,7 +569,7 @@ export default function TaskPage() {
           audio_fade_in: projectAudioFadeIn,
           audio_fade_out: projectAudioFadeOut,
           processing_mode: projectProcessingMode,
-          apply_to_existing: true,
+          apply_to_existing: task?.status === "completed",
         }),
       });
       if (!response.ok) {
@@ -764,18 +764,28 @@ export default function TaskPage() {
                   </Link>
                 )}
                 {(task.status === "queued" || task.status === "processing") && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      await fetch(`${taskApiUrl}/${task.id}/cancel`, {
-                        method: "POST",
-                      });
-                      await fetchTaskStatus();
-                    }}
-                  >
-                    取消
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSettingsSheetOpen(true)}
+                    >
+                      <Settings2 className="w-4 h-4" />
+                      项目设置
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        await fetch(`${taskApiUrl}/${task.id}/cancel`, {
+                          method: "POST",
+                        });
+                        await fetchTaskStatus();
+                      }}
+                    >
+                      取消
+                    </Button>
+                  </>
                 )}
                 {(task.status === "cancelled" || task.status === "error") && (
                   <Button
@@ -966,176 +976,6 @@ export default function TaskPage() {
                 </Button>
               )}
             </div>
-
-            <Sheet open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen}>
-              <SheetContent side="right" className="sm:max-w-md overflow-y-auto">
-                <SheetHeader>
-                  <SheetTitle className="flex items-center gap-2">
-                    <Settings2 className="w-4 h-4" />
-                    项目设置
-                  </SheetTitle>
-                  <SheetDescription>
-                    为本任务的所有片段配置字体、字幕与 B-Roll。
-                  </SheetDescription>
-                </SheetHeader>
-
-                <div className="space-y-5 px-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">字体</label>
-                    <Select value={projectFontFamily} onValueChange={setProjectFontFamily}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="字体族" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableFonts.map((font) => (
-                          <SelectItem key={font.name} value={font.name}>
-                            <span className="flex items-center gap-2">
-                              <Type className="w-3 h-3" />
-                              {font.display_name}
-                            </span>
-                          </SelectItem>
-                        ))}
-                        {availableFonts.length === 0 && (
-                          <SelectItem value="TikTokSans-Regular">TikTok Sans Regular</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">字号</label>
-                    <Input
-                      type="number"
-                      min={12}
-                      max={72}
-                      value={projectFontSize}
-                      onChange={(e) => setProjectFontSize(e.target.value)}
-                      placeholder="字号"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">颜色</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={projectFontColor}
-                        onChange={(e) => setProjectFontColor(e.target.value)}
-                        className="h-9 w-9 rounded border border-gray-300 cursor-pointer"
-                      />
-                      <Input
-                        value={projectFontColor}
-                        onChange={(e) => setProjectFontColor(e.target.value)}
-                        placeholder="#FFFFFF"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">字幕样式</label>
-                    <Select value={projectCaptionTemplate} onValueChange={setProjectCaptionTemplate}>
-                      <SelectTrigger>
-                        <SelectValue>
-                          {projectCaptionTemplate === 'bilingual' ? '中英双语' : availableTemplates.find((t) => t.id === projectCaptionTemplate)?.name || "选择样式"}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="bilingual">
-                          <div>
-                            <div className="font-medium">中英双语</div>
-                            <div className="text-xs text-gray-500">同时显示中文与英文字幕。</div>
-                          </div>
-                        </SelectItem>
-                        {availableTemplates.map((template) => (
-                          <SelectItem key={template.id} value={template.id}>
-                            <div>
-                              <div className="font-medium">{template.name}</div>
-                              <div className="text-xs text-gray-500">{template.description}</div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                        {availableTemplates.length === 0 && <SelectItem value="default">默认</SelectItem>}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={projectIncludeBroll}
-                      onChange={(e) => setProjectIncludeBroll(e.target.checked)}
-                      className="rounded"
-                    />
-                    包含 B-Roll
-                  </label>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-gray-500">处理模式</label>
-                    <Select
-                      value={projectProcessingMode}
-                      onValueChange={(value) => setProjectProcessingMode(value as 'fast' | 'balanced' | 'quality')}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择处理模式" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fast">
-                          <div>
-                            <div className="font-medium">快速</div>
-                            <div className="text-xs text-gray-500">优先速度，生成少量高相关片段（最多约 4 条）。</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="balanced">
-                          <div>
-                            <div className="font-medium">均衡</div>
-                            <div className="text-xs text-gray-500">速度与数量兼顾，生成中等数量片段。</div>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="quality">
-                          <div>
-                            <div className="font-medium">质量</div>
-                            <div className="text-xs text-gray-500">优先质量与覆盖面，生成全部相关片段，耗时更长。</div>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={projectAudioFadeIn}
-                      onChange={(e) => setProjectAudioFadeIn(e.target.checked)}
-                      className="rounded"
-                    />
-                    启用音频淡入
-                  </label>
-
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={projectAudioFadeOut}
-                      onChange={(e) => setProjectAudioFadeOut(e.target.checked)}
-                      className="rounded"
-                    />
-                    启用音频淡出
-                  </label>
-                </div>
-
-                <SheetFooter>
-                  <Button
-                    className="w-full"
-                    onClick={() => {
-                      handleApplyProjectSettings();
-                      setSettingsSheetOpen(false);
-                    }}
-                    disabled={isApplyingSettings}
-                  >
-                    {isApplyingSettings ? "应用中…" : "应用到全部片段"}
-                  </Button>
-                </SheetFooter>
-              </SheetContent>
-            </Sheet>
 
             {clips.map((clip) => (
               <Card key={clip.id} className="overflow-hidden">
@@ -1381,6 +1221,187 @@ export default function TaskPage() {
           </div>
         )}
       </div>
+
+      {task && (
+        <Sheet open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen}>
+          <SheetContent side="right" className="sm:max-w-md overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <Settings2 className="w-4 h-4" />
+                项目设置
+              </SheetTitle>
+              <SheetDescription>
+                配置本任务的字体、字幕与音频。排队或处理中时保存会写入任务；生成片段时尚未输出的部分将使用最新设置。
+                {task.status === "completed"
+                  ? " 完成后可勾选「应用到全部片段」以按新设置重新渲染所有成片。"
+                  : ""}
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="space-y-5 px-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-500">字体</label>
+                <Select value={projectFontFamily} onValueChange={setProjectFontFamily}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="字体族" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableFonts.map((font) => (
+                      <SelectItem key={font.name} value={font.name}>
+                        <span className="flex items-center gap-2">
+                          <Type className="w-3 h-3" />
+                          {font.display_name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                    {availableFonts.length === 0 && (
+                      <SelectItem value="TikTokSans-Regular">TikTok Sans Regular</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-500">字号</label>
+                <Input
+                  type="number"
+                  min={12}
+                  max={72}
+                  value={projectFontSize}
+                  onChange={(e) => setProjectFontSize(e.target.value)}
+                  placeholder="字号"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-500">颜色</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={projectFontColor}
+                    onChange={(e) => setProjectFontColor(e.target.value)}
+                    className="h-9 w-9 rounded border border-gray-300 cursor-pointer"
+                  />
+                  <Input
+                    value={projectFontColor}
+                    onChange={(e) => setProjectFontColor(e.target.value)}
+                    placeholder="#FFFFFF"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-500">字幕样式</label>
+                <Select value={projectCaptionTemplate} onValueChange={setProjectCaptionTemplate}>
+                  <SelectTrigger>
+                    <SelectValue>
+                      {projectCaptionTemplate === "bilingual"
+                        ? "中英双语"
+                        : availableTemplates.find((t) => t.id === projectCaptionTemplate)?.name || "选择样式"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bilingual">
+                      <div>
+                        <div className="font-medium">中英双语</div>
+                        <div className="text-xs text-gray-500">同时显示中文与英文字幕。</div>
+                      </div>
+                    </SelectItem>
+                    {availableTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        <div>
+                          <div className="font-medium">{template.name}</div>
+                          <div className="text-xs text-gray-500">{template.description}</div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {availableTemplates.length === 0 && <SelectItem value="default">默认</SelectItem>}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectIncludeBroll}
+                  onChange={(e) => setProjectIncludeBroll(e.target.checked)}
+                  className="rounded"
+                />
+                包含 B-Roll
+              </label>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-500">处理模式</label>
+                <Select
+                  value={projectProcessingMode}
+                  onValueChange={(value) => setProjectProcessingMode(value as "fast" | "balanced" | "quality")}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择处理模式" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fast">
+                      <div>
+                        <div className="font-medium">快速</div>
+                        <div className="text-xs text-gray-500">优先速度，生成少量高相关片段（最多约 4 条）。</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="balanced">
+                      <div>
+                        <div className="font-medium">均衡</div>
+                        <div className="text-xs text-gray-500">速度与数量兼顾，生成中等数量片段。</div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="quality">
+                      <div>
+                        <div className="font-medium">质量</div>
+                        <div className="text-xs text-gray-500">优先质量与覆盖面，生成全部相关片段，耗时更长。</div>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectAudioFadeIn}
+                  onChange={(e) => setProjectAudioFadeIn(e.target.checked)}
+                  className="rounded"
+                />
+                启用音频淡入
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectAudioFadeOut}
+                  onChange={(e) => setProjectAudioFadeOut(e.target.checked)}
+                  className="rounded"
+                />
+                启用音频淡出
+              </label>
+            </div>
+
+            <SheetFooter>
+              <Button
+                className="w-full"
+                onClick={() => {
+                  void handleApplyProjectSettings();
+                  setSettingsSheetOpen(false);
+                }}
+                disabled={isApplyingSettings}
+              >
+                {isApplyingSettings
+                  ? "应用中…"
+                  : task.status === "completed"
+                    ? "应用到全部片段"
+                    : "保存设置"}
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* Delete Task Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

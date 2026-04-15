@@ -1308,12 +1308,13 @@ def create_optimized_clip(
         end_time = min(end_time + 0.5, video.duration)
         clip = video.subclipped(start_time, end_time)
 
-        # Apply audio fades if requested
+        # Apply audio fades if requested (longer ramps are easier to hear on short clips)
         if clip.audio:
+            fade_s = min(2.5, max(0.65, duration * 0.28))
             if audio_fade_in:
-                clip.audio = clip.audio.audio_fadein(min(1.0, duration * 0.2))
+                clip.audio = clip.audio.audio_fadein(fade_s)
             if audio_fade_out:
-                clip.audio = clip.audio.audio_fadeout(min(1.0, duration * 0.2))
+                clip.audio = clip.audio.audio_fadeout(fade_s)
 
         if keep_original:
             # No face detection, no crop, no resize - use trimmed clip as-is

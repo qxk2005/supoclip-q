@@ -10,7 +10,7 @@ import logging
 import re
 
 from pydantic_ai import Agent
-from pydantic import BaseModel, Field, ValidationError, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from .config import Config
 
@@ -225,7 +225,176 @@ Critical accuracy requirements:
 - Do not reject or penalize a segment simply because of the subject matter; stay content-neutral and assess clip quality only.
 
 Transcript:
-{transcript}"""
+{transcript}
+
+OUTPUT FORMAT (critical):
+- Respond with a single JSON value only: either a JSON array of segment objects, or an object with a "most_relevant_segments" array.
+- Do not use Markdown headings (no ###). Do not put timestamps like [MM:SS - MM:SS] outside of JSON — those bracket forms break parsing.
+- If you must explain, use a short "reasoning" string inside each segment object only."""
+
+
+def _strip_model_reasoning_prefix(text: str) -> str:
+    """Drop trailing thinking/reasoning wrappers some providers emit before the real answer."""
+    t = text.strip()
+    for sep in ("</think>", "`</think>`", "</think>", "<|im_end|>"):
+        pos = t.rfind(sep)
+        if pos != -1:
+            t = t[pos + len(sep) :].strip()
+    return t
+
+
+def _segments_from_markdown_style_output(text: str) -> list[dict[str, Any]]:
+    """
+    When the model returns Markdown reports (### Segment / **Timestamps:**) instead of JSON,
+    extract segment dicts compatible with _transcript_analysis_from_parsed_json.
+    """
+    segments: list[dict[str, Any]] = []
+    parts = re.split(r"\n###\s+Segment\s+\d+\s*:", text, flags=re.IGNORECASE)
+    for chunk in parts[1:]:
+        ts_m = re.search(r"\[(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\]", chunk)
+        if not ts_m:
+            continue
+        start_time, end_time = ts_m.group(1), ts_m.group(2)
+        text_m = re.search(
+            r"(?:\*\*)?Text(?:\*\*)?\s*:\s*\n(.+?)(?=\n\*\*Virality|\n---|\Z)",
+            chunk,
+            re.DOTALL | re.IGNORECASE,
+        )
+        body = text_m.group(1).strip() if text_m else ""
+        body = re.sub(r"\s+", " ", body).strip()
+        if len(body.split()) < 3:
+            continue
+        segments.append(
+            {
+                "start_time": start_time,
+                "end_time": end_time,
+                "text": body,
+                "reasoning": "从模型 Markdown 输出解析的片段。",
+                "virality_score": 76,
+                "virality_breakdown": {
+                    "hook_strength": 19,
+                    "engagement": 19,
+                    "value": 19,
+                    "shareability": 19,
+                },
+            }
+        )
+    return segments
+
+
+def _parse_json_payload_from_llm_text(text: str) -> Optional[Any]:
+    """
+    Extract JSON array or object from model output without mistaking Markdown timestamps
+    like [15:21 - 15:45] for the start of a JSON array.
+    """
+    cleaned = _strip_model_reasoning_prefix(text)
+    decoder = json.JSONDecoder()
+
+    # 1) Fenced ```json ... ``` blocks
+    for m in re.finditer(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.IGNORECASE):
+        chunk = m.group(1).strip()
+        if not chunk:
+            continue
+        try:
+            return json.loads(chunk)
+        except json.JSONDecodeError:
+            try:
+                return decoder.raw_decode(chunk, 0)[0]
+            except json.JSONDecodeError:
+                continue
+
+    # 2) Object with most_relevant_segments
+    m_obj = re.search(r"\{\s*\"most_relevant_segments\"\s*:", cleaned)
+    if m_obj:
+        try:
+            return decoder.raw_decode(cleaned, m_obj.start())[0]
+        except json.JSONDecodeError:
+            pass
+
+    # 3) JSON array of objects — require `[` then `{` (not `[15:` timestamp)
+    for m in re.finditer(r"\[\s*\{", cleaned):
+        try:
+            return decoder.raw_decode(cleaned, m.start())[0]
+        except json.JSONDecodeError:
+            continue
+
+    # 4) Any top-level `{` that looks like a segment (legacy)
+    m_seg = re.search(r"\{\s*\"start_time\"\s*:", cleaned)
+    if m_seg:
+        # Might be a single segment object or wrapped; try array of one
+        try:
+            return decoder.raw_decode(cleaned, m_seg.start())[0]
+        except json.JSONDecodeError:
+            pass
+
+    md_segments = _segments_from_markdown_style_output(cleaned)
+    if md_segments:
+        logger.info(
+            "Recovered %s segment(s) from Markdown-style model output (no JSON array found).",
+            len(md_segments),
+        )
+        return md_segments
+
+    return None
+
+
+def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAnalysis]:
+    """Build TranscriptAnalysis from parsed JSON (list of segments or full envelope dict)."""
+    if parsed is None:
+        return None
+    if isinstance(parsed, list):
+        envelope = {
+            "most_relevant_segments": parsed,
+            "summary": "Summary not generated by model.",
+            "key_topics": [],
+        }
+    elif isinstance(parsed, dict):
+        if "most_relevant_segments" in parsed:
+            envelope = {
+                "most_relevant_segments": parsed.get("most_relevant_segments", []),
+                "summary": parsed.get("summary", "Summary not generated by model."),
+                "key_topics": parsed.get("key_topics", []) or [],
+            }
+        else:
+            return None
+    else:
+        return None
+
+    segments_raw = envelope.get("most_relevant_segments") or []
+    adapted_segments = []
+    for segment in segments_raw:
+        if not isinstance(segment, dict):
+            continue
+        virality_breakdown = segment.get("virality_breakdown") or {}
+        if not isinstance(virality_breakdown, dict):
+            virality_breakdown = {}
+        adapted_segment = {
+            "start_time": segment.get("start_time"),
+            "end_time": segment.get("end_time"),
+            "text": segment.get("text"),
+            "relevance_score": 0.9,
+            "reasoning": segment.get("reasoning", "AI generated clip."),
+            "virality": {
+                "hook_score": int(virality_breakdown.get("hook_strength", 0)),
+                "engagement_score": int(virality_breakdown.get("engagement", 0)),
+                "value_score": int(virality_breakdown.get("value", 0)),
+                "shareability_score": int(virality_breakdown.get("shareability", 0)),
+                "total_score": int(segment.get("virality_score", 0)),
+                "hook_type": "none",
+                "virality_reasoning": segment.get("reasoning", "AI generated clip."),
+            },
+        }
+        adapted_segments.append(adapted_segment)
+
+    analysis_obj = {
+        "most_relevant_segments": adapted_segments,
+        "summary": envelope.get("summary", "Summary not generated by model."),
+        "key_topics": envelope.get("key_topics", []),
+    }
+    try:
+        return TranscriptAnalysis.model_validate(analysis_obj)
+    except ValidationError:
+        return None
 
 
 async def get_most_relevant_parts_by_transcript(
@@ -274,57 +443,31 @@ async def get_most_relevant_parts_by_transcript(
                         transcript=chunk, include_broll=include_broll, language=language
                     )
                 )
-                
-                if hasattr(result, 'output') and isinstance(result.output, str):
-                    output_str = result.output
-                    
-                    # --- Final, Simplified JSON Extraction ---
-                    think_end_pos = output_str.rfind('</think>')
-                    search_start_pos = think_end_pos + len('</think>') if think_end_pos != -1 else 0
-                    
-                    json_start_pos = -1
-                    first_bracket = output_str.find('[', search_start_pos)
-                    if first_bracket != -1:
-                        json_start_pos = first_bracket
-                        
-                    if json_start_pos != -1:
-                        # The AI returns a list of segments, but our model expects an object.
-                        # We need to wrap the list in an object.
-                        json_str = output_str[json_start_pos:].strip()
-                        segments_list = json.loads(json_str)
 
-                        # --- Data Transformation Step ---
-                        adapted_segments = []
-                        for segment in segments_list:
-                            virality_breakdown = segment.get("virality_breakdown", {})
-                            adapted_segment = {
-                                "start_time": segment.get("start_time"),
-                                "end_time": segment.get("end_time"),
-                                "text": segment.get("text"),
-                                "relevance_score": 0.9,  # Provide a default value
-                                "reasoning": segment.get("reasoning", "AI generated clip."),
-                                "virality": {
-                                    "hook_score": int(virality_breakdown.get("hook_strength", 0)),
-                                    "engagement_score": int(virality_breakdown.get("engagement", 0)),
-                                    "value_score": int(virality_breakdown.get("value", 0)),
-                                    "shareability_score": int(virality_breakdown.get("shareability", 0)),
-                                    "total_score": int(segment.get("virality_score", 0)),
-                                    "hook_type": "none", # Provide a default
-                                    "virality_reasoning": segment.get("reasoning", "AI generated clip.")
-                                }
-                            }
-                            adapted_segments.append(adapted_segment)
-                        
-                        analysis_obj = {
-                            "most_relevant_segments": adapted_segments,
-                            "summary": "Summary not generated by model.",
-                            "key_topics": []
-                        }
-                        analysis = TranscriptAnalysis.model_validate(analysis_obj)
+                if hasattr(result, "output"):
+                    out = result.output
+                    if isinstance(out, TranscriptAnalysis):
+                        analysis = out
+                    elif isinstance(out, str):
+                        parsed = _parse_json_payload_from_llm_text(out)
+                        analysis = _transcript_analysis_from_parsed_json(parsed)
+                        if analysis is None:
+                            logger.warning(
+                                "Could not parse JSON segments from AI output for chunk %s "
+                                "(model may have returned Markdown or timestamps before JSON).",
+                                i + 1,
+                            )
                     else:
-                        logger.warning(f"Could not find JSON array start in AI output for chunk {i+1}")
+                        logger.warning(
+                            "AI result for chunk %s is unexpected type: %s",
+                            i + 1,
+                            type(out),
+                        )
                 else:
-                    logger.warning(f"AI result for chunk {i+1} is not in the expected format. Got: {type(result)}")
+                    logger.warning(
+                        "AI result for chunk %s has no output attribute",
+                        i + 1,
+                    )
 
             except Exception as e:
                 logger.error(f"Error analyzing chunk {i + 1} with pydantic-ai: {e}", exc_info=True)

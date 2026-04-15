@@ -22,6 +22,7 @@ import { ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, 
   HelpCircle,
   Languages,
   Zap,
+  Volume2,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import LandingPage from "@/components/landing-page";
@@ -127,6 +128,8 @@ export default function Home() {
   const [brollAvailable, setBrollAvailable] = useState(false);
   const [outputFormat, setOutputFormat] = useState<"vertical" | "original">("vertical");
   const [addSubtitles, setAddSubtitles] = useState(true);
+  const [audioFadeIn, setAudioFadeIn] = useState(false);
+  const [audioFadeOut, setAudioFadeOut] = useState(false);
 
   // Latest task state
   const [latestTask, setLatestTask] = useState<LatestTask | null>(null);
@@ -482,6 +485,10 @@ export default function Home() {
           processing_mode: processingMode,
           chunk_size: parseInt(chunkSize, 10) || 15000,
           language: language,
+          output_format: outputFormat,
+          add_subtitles: addSubtitles,
+          audio_fade_in: audioFadeIn,
+          audio_fade_out: audioFadeOut,
         }),
       });
 
@@ -1056,6 +1063,36 @@ export default function Home() {
                     <Switch
                       checked={addSubtitles}
                       onCheckedChange={setAddSubtitles}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
+                    <div className="flex items-center gap-3">
+                      <Volume2 className="w-4 h-4 text-amber-600" />
+                      <div>
+                        <h3 className="text-sm font-medium text-stone-900">音频淡入</h3>
+                        <p className="text-xs text-stone-500">片段开头对原声音量渐强（成片内可闻）</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={audioFadeIn}
+                      onCheckedChange={setAudioFadeIn}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
+                    <div className="flex items-center gap-3">
+                      <Volume2 className="w-4 h-4 text-amber-600" />
+                      <div>
+                        <h3 className="text-sm font-medium text-stone-900">音频淡出</h3>
+                        <p className="text-xs text-stone-500">片段结尾对原声音量渐弱</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={audioFadeOut}
+                      onCheckedChange={setAudioFadeOut}
                       disabled={isLoading}
                     />
                   </div>

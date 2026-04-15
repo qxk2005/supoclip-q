@@ -133,6 +133,12 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     add_subtitles = data.get("add_subtitles", True)
     if not isinstance(add_subtitles, bool):
         add_subtitles = True
+    audio_fade_in = data.get("audio_fade_in", False)
+    audio_fade_out = data.get("audio_fade_out", False)
+    if not isinstance(audio_fade_in, bool):
+        audio_fade_in = False
+    if not isinstance(audio_fade_out, bool):
+        audio_fade_out = False
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -155,6 +161,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             processing_mode=processing_mode,
             chunk_size=chunk_size,
             language=language,
+            audio_fade_in=audio_fade_in,
+            audio_fade_out=audio_fade_out,
         )
 
         # Get source type for worker

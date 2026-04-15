@@ -30,6 +30,8 @@ class TaskRepository:
         processing_mode: str = "fast",
         chunk_size: int = 15000,
         language: str = "auto",
+        audio_fade_in: bool = False,
+        audio_fade_out: bool = False,
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -39,11 +41,13 @@ class TaskRepository:
                     INSERT INTO tasks (
                         id, user_id, source_id, status, font_family, font_size, font_color,
                         caption_template, include_broll, processing_mode, chunk_size, language,
+                        audio_fade_in, audio_fade_out,
                         created_at, updated_at
                     )
                     VALUES (
                         :task_id, :user_id, :source_id, :status, :font_family, :font_size, :font_color,
                         :caption_template, :include_broll, :processing_mode, :chunk_size, :language,
+                        :audio_fade_in, :audio_fade_out,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -61,6 +65,8 @@ class TaskRepository:
                     "processing_mode": processing_mode,
                     "chunk_size": chunk_size,
                     "language": language,
+                    "audio_fade_in": audio_fade_in,
+                    "audio_fade_out": audio_fade_out,
                 },
             )
         except Exception:
