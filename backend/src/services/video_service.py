@@ -234,6 +234,7 @@ class VideoService:
             )
             clip_path = output_dir / clip_filename
 
+            seg_text = (segment.get("text") or "").strip() or None
             success = await run_in_thread(
                 create_optimized_clip,
                 video_path,
@@ -250,6 +251,7 @@ class VideoService:
                 audio_fade_out,
                 processing_mode,
                 bilingual_subtitles,
+                seg_text,
             )
 
             if not success:

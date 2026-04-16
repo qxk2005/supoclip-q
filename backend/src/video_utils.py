@@ -688,6 +688,133 @@ def get_words_in_range(
     return relevant_words
 
 
+def _norm_token_for_align(raw: str) -> str:
+    """Loosen ASR vs reference equality (punctuation + light apostrophe noise)."""
+    t = _strip_token_edges_for_key(raw)
+    if not t:
+        return ""
+    return t.replace("'", "").replace("'", "").replace("`", "")
+
+
+def _token_lists_match_subsequence(needle: List[str], haystack: List[str]) -> bool:
+    """*needle* appears as an ordered subsequence of *haystack* (same length units)."""
+    if not needle:
+        return True
+    i = 0
+    for tok in haystack:
+        if i < len(needle) and _norm_token_for_align(tok) == _norm_token_for_align(needle[i]):
+            i += 1
+    return i == len(needle)
+
+
+def _minimal_contiguous_window_for_subsequence(
+    haystack: List[str],
+    needle: List[str],
+) -> Optional[Tuple[int, int]]:
+    """
+    Smallest half-open range [left, right) into *haystack* such that *needle* matches
+    as an ordered subsequence of haystack[left:right].
+    """
+    n, m = len(haystack), len(needle)
+    if m == 0:
+        return (0, n)
+    if m > n or not needle:
+        return None
+    # Increasing width → first hit is minimal-width.
+    for width in range(m, n + 1):
+        for left in range(0, n - width + 1):
+            right = left + width
+            if _token_lists_match_subsequence(needle, haystack[left:right]):
+                return (left, right)
+    return None
+
+
+def _trim_latin_words_to_reference_text(words: List[Dict], reference_text: str) -> List[Dict]:
+    ref_toks = [
+        t
+        for t in (_norm_token_for_align(x) for x in reference_text.split())
+        if t
+    ]
+    if not ref_toks:
+        return words
+    asr_toks = [_norm_token_for_align(w.get("text") or "") for w in words]
+    span = _minimal_contiguous_window_for_subsequence(asr_toks, ref_toks)
+    if span is None:
+        return words
+    left, right = span
+    return words[left:right]
+
+
+def _trim_cjk_words_to_reference_text(words: List[Dict], reference_text: str) -> List[Dict]:
+    ref_chars = [c for c in reference_text if not c.isspace()]
+    if not ref_chars:
+        return words
+    # Map each non-space character to its word index (Whisper / ASR word units).
+    char_word_idx: List[int] = []
+    chars_flat: List[str] = []
+    for wi, w in enumerate(words):
+        for ch in w.get("text") or "":
+            if ch.isspace():
+                continue
+            chars_flat.append(ch)
+            char_word_idx.append(wi)
+    if not chars_flat:
+        return words
+    ref_s = "".join(ref_chars)
+    hay_s = "".join(chars_flat)
+    if ref_s and ref_s in hay_s:
+        si = hay_s.index(ref_s)
+        ei = si + len(ref_s) - 1
+        w0 = char_word_idx[si]
+        w1 = char_word_idx[ei]
+        return words[w0 : w1 + 1]
+    # Minimal character window where ref is a subsequence (ordered) of window chars.
+    n_ch, m_ch = len(chars_flat), len(ref_chars)
+    if m_ch > n_ch:
+        return words
+
+    def _chars_subseq(needle: List[str], haystack: List[str]) -> bool:
+        if not needle:
+            return True
+        j = 0
+        for c in haystack:
+            if j < len(needle) and c == needle[j]:
+                j += 1
+        return j == len(needle)
+
+    for width in range(m_ch, n_ch + 1):
+        for left in range(0, n_ch - width + 1):
+            right = left + width
+            if _chars_subseq(ref_chars, chars_flat[left:right]):
+                w0 = char_word_idx[left]
+                w1 = char_word_idx[right - 1]
+                return words[w0 : w1 + 1]
+    return words
+
+
+def trim_subtitle_words_to_segment_text(
+    words: List[Dict],
+    reference_text: Optional[str],
+) -> List[Dict]:
+    """
+    Narrow time-window ASR words to the contiguous span that best matches the AI
+    segment's verbatim *reference_text* (same wording as ``segment['text']``).
+
+    Cuts off marginal tokens at clip edges that still fall inside the trim window
+    but are outside the model-selected narrative span.
+    """
+    if not words or not (reference_text or "").strip():
+        return words
+    ref = (reference_text or "").strip()
+    try:
+        if _words_are_primarily_cjk(words):
+            return _trim_cjk_words_to_reference_text(words, ref)
+        return _trim_latin_words_to_reference_text(words, ref)
+    except Exception as e:
+        logger.warning("Subtitle trim to segment text failed, using full window: %s", e)
+        return words
+
+
 _TOKEN_EDGE_PUNCT_RE = re.compile(
     r'^[\s\"\'"“”‘’\[\({]+|[\s\"\'"“”‘’.,;:!?…，。！？）\]}\-—]+$', re.UNICODE
 )
@@ -975,6 +1102,9 @@ def collect_bilingual_phrase_pairs(
         st = parse_timestamp_to_seconds(seg["start_time"])
         et = parse_timestamp_to_seconds(seg["end_time"])
         words = get_words_in_range(transcript_data, st, et)
+        words = trim_subtitle_words_to_segment_text(
+            words, (seg.get("text") or "").strip() or None
+        )
         for group in group_words_for_bilingual_captions(words):
             if not group:
                 continue
@@ -1237,6 +1367,7 @@ def create_faster_whisper_subtitles(
     font_color: str = "#FFFFFF",
     caption_template: str = "default",
     bilingual_subtitles: bool = False,
+    subtitle_segment_text: Optional[str] = None,
 ) -> List[TextClip]:
     """Create subtitles using faster-whisper's precise word timing with template support."""
     transcript_data = load_cached_transcript_data(video_path)
@@ -1264,8 +1395,11 @@ def create_faster_whisper_subtitles(
     )
     logger.info(f"Effective font: {effective_font_family}, size: {effective_font_size}, color: {effective_font_color}")
 
-    # Get words in range
+    # Get words in range, then trim to AI segment wording (drops edge-only ASR tokens).
     relevant_words = get_words_in_range(transcript_data, clip_start, clip_end)
+    relevant_words = trim_subtitle_words_to_segment_text(
+        relevant_words, subtitle_segment_text
+    )
 
     if not relevant_words:
         logger.warning("No words found in clip timerange")
@@ -1837,6 +1971,7 @@ def create_optimized_clip(
     audio_fade_out: bool = False,
     processing_mode: str = "fast",
     bilingual_subtitles: bool = False,
+    subtitle_segment_text: Optional[str] = None,
 ) -> bool:
     """Create clip with optional subtitles and audio fades."""
     try:
@@ -1933,6 +2068,7 @@ def create_optimized_clip(
                 font_color,
                 caption_template,
                 bilingual_subtitles=bilingual_subtitles,
+                subtitle_segment_text=subtitle_segment_text,
             )
             logger.info(f"Found {len(subtitle_clips)} subtitle clips to add.")
             final_clips.extend(subtitle_clips)
@@ -2041,6 +2177,7 @@ def create_clips_from_segments(
                 audio_fade_out,
                 processing_mode,
                 bilingual_subtitles,
+                (segment.get("text") or "").strip() or None,
             )
 
             if success:
