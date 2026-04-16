@@ -22,6 +22,9 @@
 
 # misc
 .DS_Store
+
+# Per-user JSON files (professional hotwords API)
+.data/
 *.pem
 
 # debug

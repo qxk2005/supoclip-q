@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { MAX_PROFESSIONAL_HOTWORDS_LEN } from "@/lib/user-professional-hotwords-constants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -107,6 +108,9 @@ export default function Home() {
   const [processingMode, setProcessingMode] = useState("fast");
   const [chunkSize, setChunkSize] = useState("15000");
   const [professionalHotwords, setProfessionalHotwords] = useState("");
+  const [professionalHotwordsHydrated, setProfessionalHotwordsHydrated] =
+    useState(false);
+  const skipNextProfessionalHotwordsSave = useRef(false);
   const [language, setLanguage] = useState("auto");
   const [error, setError] = useState<string | null>(null);
   const [sourceTitle, setSourceTitle] = useState<string | null>(null);
@@ -153,6 +157,81 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(PREF_AUDIO_FADE_OUT, audioFadeOut ? "1" : "0");
   }, [audioFadeOut]);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setProfessionalHotwords("");
+      setProfessionalHotwordsHydrated(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      setProfessionalHotwordsHydrated(false);
+      try {
+        const response = await fetch("/api/user-professional-hotwords", {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data: unknown = await response.json();
+        if (
+          cancelled ||
+          !data ||
+          typeof data !== "object" ||
+          typeof (data as { text?: unknown }).text !== "string"
+        ) {
+          return;
+        }
+        setProfessionalHotwords(
+          (data as { text: string }).text.slice(
+            0,
+            MAX_PROFESSIONAL_HOTWORDS_LEN,
+          ),
+        );
+        skipNextProfessionalHotwordsSave.current = true;
+      } catch (error) {
+        console.error("Failed to load professional hotwords:", error);
+      } finally {
+        if (!cancelled) {
+          setProfessionalHotwordsHydrated(true);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!professionalHotwordsHydrated || !session?.user?.id) {
+      return;
+    }
+    if (skipNextProfessionalHotwordsSave.current) {
+      skipNextProfessionalHotwordsSave.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      void fetch("/api/user-professional-hotwords", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: professionalHotwords.slice(0, MAX_PROFESSIONAL_HOTWORDS_LEN),
+        }),
+      }).catch((err) => {
+        console.error("Failed to save professional hotwords:", err);
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [
+    professionalHotwords,
+    professionalHotwordsHydrated,
+    session?.user?.id,
+  ]);
 
   // Latest task state
   const [latestTask, setLatestTask] = useState<LatestTask | null>(null);
@@ -510,7 +589,9 @@ export default function Home() {
           language: language,
           ...(professionalHotwords.trim()
             ? {
-                professional_hotwords: professionalHotwords.trim().slice(0, 8000),
+                professional_hotwords: professionalHotwords
+                  .trim()
+                  .slice(0, MAX_PROFESSIONAL_HOTWORDS_LEN),
               }
             : {}),
           output_format: outputFormat,

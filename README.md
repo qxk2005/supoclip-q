@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://www.supoclip.com">
-    <img src="assets/banner.png" alt="SupoClip Banner" width="100%" />
+    <img src="assets/banner2.png" alt="SupoClip Banner" width="100%" />
   </a>
 </p>
 
