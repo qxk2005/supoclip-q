@@ -41,6 +41,63 @@ class SubtitleSegmentTrimTests(unittest.TestCase):
         self.assertEqual(len(out), 2)
         self.assertEqual([w["text"] for w in out], ["关键是", "效率"])
 
+    def test_cjk_reference_replaces_asr_tokens_for_display(self):
+        """AI/hotword-corrected segment text must override Whisper spellings on screen."""
+        words = [
+            {"text": "科原", "start": 0.0, "end": 0.15},
+            {"text": "网络", "start": 0.15, "end": 0.35},
+        ]
+        ref = "Kubernetes网络"
+        out = video_utils.apply_segment_reference_text_to_words(words, ref)
+        joined = "".join(w["text"] for w in out)
+        self.assertEqual(joined, ref)
+        self.assertEqual(len(out), 2)
+
+    def test_mixed_zh_en_reference_replaces_asr_tokens(self):
+        """Mixed CN+EN: same-length glossary fix maps cleanly onto Whisper tokens."""
+        words = [
+            {"text": "使用", "start": 0.0, "end": 0.12},
+            {"text": "docker", "start": 0.12, "end": 0.35},
+            {"text": "部署", "start": 0.35, "end": 0.5},
+        ]
+        ref = "使用 Docker 部署"
+        out = video_utils.apply_segment_reference_text_to_words(words, ref)
+        self.assertEqual(
+            "".join(w["text"] for w in out),
+            video_utils._subtitle_chars_no_whitespace(ref),
+        )
+        self.assertEqual([w["text"] for w in out], ["使用", "Docker", "部署"])
+
+    def test_cjk_punctuation_only_diff_uses_aligned_distribution(self):
+        words = [
+            {"text": "关键", "start": 0.0, "end": 0.15},
+            {"text": "是效率", "start": 0.15, "end": 0.4},
+        ]
+        ref = "关键，是效率。"
+        out = video_utils.apply_segment_reference_text_to_words(words, ref)
+        self.assertEqual([w["text"] for w in out], ["关键，", "是效率。"])
+
+    def test_trim_cjk_ignores_punctuation_in_reference(self):
+        words = [
+            {"text": "嗯", "start": 0.0, "end": 0.1},
+            {"text": "关键是", "start": 0.1, "end": 0.3},
+            {"text": "效率", "start": 0.3, "end": 0.4},
+        ]
+        ref = "关键是效率。"
+        out = video_utils.trim_subtitle_words_to_segment_text(words, ref)
+        self.assertEqual(len(out), 2)
+        self.assertEqual([w["text"] for w in out], ["关键是", "效率"])
+
+    def test_retime_spans_first_to_last_by_char_weight(self):
+        words = [
+            {"text": "ab", "start": 0.0, "end": 0.5},
+            {"text": "cdef", "start": 0.5, "end": 0.6},
+        ]
+        out = video_utils._retime_subtitle_words_by_char_weights(words)
+        self.assertAlmostEqual(out[0]["start"], 0.0)
+        self.assertAlmostEqual(out[1]["end"], 0.6)
+        self.assertAlmostEqual(out[0]["end"], out[1]["start"])
+
 
 if __name__ == "__main__":
     unittest.main()

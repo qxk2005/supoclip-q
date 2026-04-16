@@ -304,6 +304,13 @@ def build_transcript_analysis_prompt(
     elif language and lang_norm != "en":
         lang_instruction = f"The transcript is in the language: {language}."
 
+    zh_format_block = ""
+    if language == "zh" or lang_norm in ("zh-cn", "zh_cn", "chinese"):
+        zh_format_block = """
+Chinese segment.text readability:
+- Add natural Simplified Chinese punctuation (，。！？、；：) at appropriate clause or sentence boundaries so each clip excerpt is easy to read and parse. Do not change or add words; punctuation only. If the transcript line has no punctuation, infer minimal marks from grammar and natural pauses (do not wrap the whole segment in decorative quotes unless the speech itself implies them).
+"""
+
     glossary_block = ""
     hw = (professional_hotwords or "").strip()
     if hw:
@@ -347,6 +354,7 @@ Prefer diverse, non-overlapping moments with strong hooks; do not pad with weak 
     return f"""Analyze this video transcript and identify the most engaging segments for short-form content.
 
 {lang_instruction}
+{zh_format_block}
 {glossary_block}
 {theme_block}
 {count_block}

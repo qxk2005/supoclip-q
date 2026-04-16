@@ -745,8 +745,25 @@ def _trim_latin_words_to_reference_text(words: List[Dict], reference_text: str) 
     return words[left:right]
 
 
+# Punctuation ignored when matching ASR words to AI segment.text (ASR has no marks).
+_SUBTITLE_ALIGN_SKIP_CHARS: frozenset[str] = frozenset(
+    "，。！？、；：（）【】《》…—「」『』"
+    + ",.?!;:\"'()[]"
+    + "\u201c\u201d\u2018\u2019"  # “”‘’
+)
+
+
+def _reference_cjk_chars_for_trim_match(reference_text: str) -> List[str]:
+    """Content characters only — aligns transcript words with segment.text that adds 。，等."""
+    return [
+        c
+        for c in reference_text
+        if not c.isspace() and c not in _SUBTITLE_ALIGN_SKIP_CHARS
+    ]
+
+
 def _trim_cjk_words_to_reference_text(words: List[Dict], reference_text: str) -> List[Dict]:
-    ref_chars = [c for c in reference_text if not c.isspace()]
+    ref_chars = _reference_cjk_chars_for_trim_match(reference_text)
     if not ref_chars:
         return words
     # Map each non-space character to its word index (Whisper / ASR word units).
@@ -790,6 +807,170 @@ def _trim_cjk_words_to_reference_text(words: List[Dict], reference_text: str) ->
                 w1 = char_word_idx[right - 1]
                 return words[w0 : w1 + 1]
     return words
+
+
+def _subtitle_chars_no_whitespace(s: str) -> str:
+    return "".join(c for c in (s or "") if not c.isspace())
+
+
+def _subtitle_chars_for_core_compare(s: str) -> str:
+    """Strip spaces and subtitle punctuation so ASR text matches segment.text for equality checks."""
+    return "".join(
+        c for c in (s or "") if not c.isspace() and c not in _SUBTITLE_ALIGN_SKIP_CHARS
+    )
+
+
+def _partition_int_proportional(n: int, weights: List[int]) -> List[int]:
+    """Split integer *n* across len(weights) buckets proportional to *weights* (Hamilton)."""
+    m = len(weights)
+    if m == 0:
+        return []
+    if n <= 0:
+        return [0] * m
+    total = sum(weights)
+    if total <= 0:
+        base, rem = divmod(n, m)
+        return [base + (1 if i < rem else 0) for i in range(m)]
+    exact = [n * w / total for w in weights]
+    out = [int(x) for x in exact]
+    rem = n - sum(out)
+    order = sorted(range(m), key=lambda i: exact[i] - out[i], reverse=True)
+    for k in range(rem):
+        out[order[k % m]] += 1
+    return out
+
+
+def _distribute_ref_to_words_punctuation_aligned(
+    words: List[Dict],
+    ref: str,
+) -> Optional[List[Dict]]:
+    """
+    When reference matches ASR content character-for-character but adds Chinese/ASCII
+    clause punctuation, assign each character (including marks) to Whisper tokens so
+    karaoke/static lines show readable 。，等 without breaking timings.
+    """
+    if not ref or not words:
+        return None
+    asr_parts = [_subtitle_chars_no_whitespace(w.get("text") or "") for w in words]
+    out_txt = ["" for _ in words]
+    wi, ci = 0, 0
+
+    for ch in ref:
+        if ch.isspace():
+            continue
+        if ch in _SUBTITLE_ALIGN_SKIP_CHARS:
+            if wi < len(words) and ci > 0:
+                out_txt[wi] += ch
+            elif wi > 0:
+                out_txt[wi - 1] += ch
+            else:
+                out_txt[0] += ch
+            continue
+        while wi < len(asr_parts) and ci >= len(asr_parts[wi]):
+            wi += 1
+            ci = 0
+        if wi >= len(asr_parts):
+            return None
+        exp = asr_parts[wi][ci]
+        if ch != exp:
+            return None
+        out_txt[wi] += ch
+        ci += 1
+
+    while wi < len(asr_parts):
+        if ci < len(asr_parts[wi]):
+            return None
+        wi += 1
+        ci = 0
+
+    return [{**dict(w), "text": out_txt[i] or (w.get("text") or "")} for i, w in enumerate(words)]
+
+
+def apply_segment_reference_text_to_words(
+    words: List[Dict],
+    reference_text: Optional[str],
+) -> List[Dict]:
+    """
+    Replace per-token subtitle strings with slices of *reference_text* (AI segment text,
+    including glossary/hotword fixes) while keeping Whisper timings.
+
+    Burned subtitles otherwise use only ASR ``word`` strings — including for pure
+    Chinese, English, and mixed industry copy — so corrected ``segment['text']``
+    would not appear on screen without this step.
+    """
+    if not words:
+        return words
+    ref = _subtitle_chars_no_whitespace((reference_text or "").strip())
+    if not ref:
+        return words
+    asr_flat = _subtitle_chars_no_whitespace(
+        "".join(w.get("text") or "" for w in words)
+    )
+    if ref == asr_flat:
+        return words
+
+    ref_core = _subtitle_chars_for_core_compare(ref)
+    asr_core = _subtitle_chars_for_core_compare(asr_flat)
+    if ref_core == asr_core and ref_core:
+        merged = _distribute_ref_to_words_punctuation_aligned(words, ref)
+        if merged is not None:
+            return merged
+
+    weights = [
+        max(1, len(_subtitle_chars_no_whitespace(w.get("text") or "")))
+        for w in words
+    ]
+    counts = _partition_int_proportional(len(ref), weights)
+    out: List[Dict] = []
+    pos = 0
+    for w, cnt in zip(words, counts):
+        nw = dict(w)
+        if cnt > 0:
+            nw["text"] = ref[pos : pos + cnt]
+            pos += cnt
+        out.append(nw)
+    if pos < len(ref) and out:
+        last = dict(out[-1])
+        last["text"] = (last.get("text") or "") + ref[pos:]
+        out[-1] = last
+    return out
+
+
+# Backward-compatible name (older call sites / docs).
+apply_cjk_subtitle_reference_text_to_words = apply_segment_reference_text_to_words
+
+
+def _retime_subtitle_words_by_char_weights(words: List[Dict]) -> List[Dict]:
+    """
+    After replacing token text (hotwords, punctuation), Whisper's per-token
+    durations may no longer match how long each on-screen string should read.
+    Redistribute [first.start, last.end] across tokens in proportion to character
+    count so karaoke/static highlights track speech without cumulative lag.
+    """
+    if not words:
+        return words
+    if len(words) == 1:
+        return words
+    t0 = float(words[0]["start"])
+    t1 = float(words[-1]["end"])
+    span = t1 - t0
+    if span <= 1e-6:
+        return words
+    weights = [
+        max(1e-6, float(len(_subtitle_chars_no_whitespace(w.get("text") or ""))))
+        for w in words
+    ]
+    tw = sum(weights)
+    if tw <= 0:
+        return words
+    out: List[Dict] = []
+    acc = 0.0
+    for w, wt in zip(words, weights):
+        s = t0 + span * (acc / tw)
+        e = t0 + span * ((acc + wt) / tw)
+        out.append({**dict(w), "start": s, "end": e})
+        acc += wt
+    return out
 
 
 def trim_subtitle_words_to_segment_text(
@@ -1400,6 +1581,14 @@ def create_faster_whisper_subtitles(
     relevant_words = trim_subtitle_words_to_segment_text(
         relevant_words, subtitle_segment_text
     )
+
+    if subtitle_segment_text and relevant_words and not bilingual_subtitles:
+        texts_before = [w.get("text") for w in relevant_words]
+        relevant_words = apply_segment_reference_text_to_words(
+            relevant_words, subtitle_segment_text
+        )
+        if texts_before != [w.get("text") for w in relevant_words]:
+            relevant_words = _retime_subtitle_words_by_char_weights(relevant_words)
 
     if not relevant_words:
         logger.warning("No words found in clip timerange")
@@ -2135,7 +2324,9 @@ def create_optimized_clip(
 ) -> bool:
     """Create clip with optional subtitles and audio fades."""
     try:
-        duration = end_time - start_time
+        # Segment end from task/AI (must match subtitle timing & composite duration).
+        segment_end_exclusive = end_time
+        duration = segment_end_exclusive - start_time
         if duration <= 0:
             logger.error(f"Invalid clip duration: {duration:.1f}s")
             return False
@@ -2186,9 +2377,10 @@ def create_optimized_clip(
         # Load and process video
         video = VideoFileClip(str(video_path))
 
-        # Add a small safety margin to the end time to avoid cutting off audio
-        end_time = min(end_time + 0.5, video.duration)
-        clip = video.subclipped(start_time, end_time)
+        # Add a small safety margin to the end time to avoid cutting off audio.
+        # Subtitles must use segment_end_exclusive so word times stay within [0, duration].
+        end_time_padded = min(segment_end_exclusive + 0.5, video.duration)
+        clip = video.subclipped(start_time, end_time_padded)
 
         if keep_original:
             # No face detection, no crop, no resize - use trimmed clip as-is
@@ -2201,7 +2393,7 @@ def create_optimized_clip(
         else:
             # Vertical 9:16: face-centered crop, preserve native resolution
             x_offset, y_offset, new_width, new_height = detect_optimal_crop_region(
-                video, start_time, end_time, target_ratio=9 / 16
+                video, start_time, end_time_padded, target_ratio=9 / 16
             )
             cropped_clip = clip.cropped(
                 x1=x_offset, y1=y_offset, x2=x_offset + new_width, y2=y_offset + new_height
@@ -2245,7 +2437,7 @@ def create_optimized_clip(
             subtitle_clips = create_faster_whisper_subtitles(
                 video_path,
                 start_time,
-                end_time,
+                segment_end_exclusive,
                 target_width,
                 target_height,
                 font_family,
