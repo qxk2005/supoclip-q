@@ -65,6 +65,8 @@ model Task {
   professional_hotwords             String?      @db.Text
   bilingual_subtitles_mode          String       @default("auto") @db.VarChar(10)
   burn_clip_title_zh                Boolean      @default(true)
+  target_clip_count                 Int?
+  clip_theme                        String?      @db.Text
 
   // Tracking completion notifications
   completion_notification_sent_at DateTime?

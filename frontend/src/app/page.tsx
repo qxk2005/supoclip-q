@@ -97,6 +97,10 @@ const getYouTubeThumbnailUrl = (value: string): string | null => {
 const PREF_AUDIO_FADE_IN = "supoclip_pref_audio_fade_in";
 const PREF_AUDIO_FADE_OUT = "supoclip_pref_audio_fade_out";
 
+/** Aligned with backend MAX_CLIPS default (10). */
+const MAX_TARGET_CLIP_COUNT = 10;
+const MAX_CLIP_THEME_LEN = 2000;
+
 export default function Home() {
   const [url, setUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -150,6 +154,8 @@ export default function Home() {
     return localStorage.getItem(PREF_AUDIO_FADE_OUT) === "1";
   });
   const [burnClipTitleZh, setBurnClipTitleZh] = useState(true);
+  const [targetClipCount, setTargetClipCount] = useState("5");
+  const [clipTheme, setClipTheme] = useState("");
 
   useEffect(() => {
     localStorage.setItem(PREF_AUDIO_FADE_IN, audioFadeIn ? "1" : "0");
@@ -601,6 +607,13 @@ export default function Home() {
           audio_fade_in: audioFadeIn,
           audio_fade_out: audioFadeOut,
           burn_clip_title_zh: burnClipTitleZh,
+          target_clip_count: Math.min(
+            MAX_TARGET_CLIP_COUNT,
+            Math.max(1, Number.parseInt(targetClipCount, 10) || 5),
+          ),
+          ...(clipTheme.trim()
+            ? { clip_theme: clipTheme.trim().slice(0, MAX_CLIP_THEME_LEN) }
+            : {}),
         }),
       });
 
@@ -1014,6 +1027,63 @@ export default function Home() {
                   <div className="flex items-center gap-2 text-sm font-medium text-stone-900">
                     <Languages className="w-4 h-4" />
                     AI 设置
+                  </div>
+
+                  {/* Target clip count */}
+                  <div className="space-y-2">
+                    <label htmlFor="target-clip-count" className="text-sm text-stone-600 flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      目标片段数量
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-3.5 h-3.5 text-gray-500" />
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p>
+                              最终生成的竖屏短视频条数上限（模型会优先按此数量选片）。范围 1–{MAX_TARGET_CLIP_COUNT}。
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </label>
+                    <Input
+                      id="target-clip-count"
+                      type="number"
+                      min={1}
+                      max={MAX_TARGET_CLIP_COUNT}
+                      value={targetClipCount}
+                      onChange={(e) => setTargetClipCount(e.target.value)}
+                      onBlur={() => {
+                        const n = Number.parseInt(targetClipCount, 10);
+                        if (Number.isNaN(n) || n < 1) {
+                          setTargetClipCount("5");
+                        } else {
+                          setTargetClipCount(String(Math.min(MAX_TARGET_CLIP_COUNT, Math.max(1, n))));
+                        }
+                      }}
+                      disabled={isLoading}
+                      className="w-full h-11"
+                    />
+                  </div>
+
+                  {/* Optional clip theme */}
+                  <div className="space-y-2">
+                    <label htmlFor="clip-theme" className="text-sm text-stone-600">
+                      片段主题（可选）
+                    </label>
+                    <Input
+                      id="clip-theme"
+                      type="text"
+                      value={clipTheme}
+                      onChange={(e) => setClipTheme(e.target.value.slice(0, MAX_CLIP_THEME_LEN))}
+                      placeholder="例如：产品定价策略、健身减脂、亲子关系…"
+                      disabled={isLoading}
+                      className="w-full h-11"
+                    />
+                    <p className="text-xs text-stone-400">
+                      填写后，选片会更偏向与主题相关的段落；留空则按整体传播性选片。
+                    </p>
                   </div>
 
                   {/* Video Language Selector */}

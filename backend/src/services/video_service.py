@@ -43,6 +43,17 @@ class VideoService:
     """Service for video processing operations."""
 
     @staticmethod
+    def _output_segment_cap(
+        processing_mode: str, target_clip_count: Optional[int]
+    ) -> Optional[int]:
+        """Max segments to keep after AI ranking; None means no extra cap (balanced/quality legacy)."""
+        if target_clip_count is not None:
+            return min(max(1, int(target_clip_count)), config.max_clips)
+        if processing_mode == "fast":
+            return config.fast_mode_max_clips
+        return None
+
+    @staticmethod
     def _get_file_duration(path: Path) -> Optional[float]:
         """Return video duration in seconds via ffprobe, or None on failure."""
         try:
@@ -135,18 +146,25 @@ class VideoService:
         language: str = "en",
         include_broll: bool = False,
         professional_hotwords: Optional[str] = None,
+        clip_theme: Optional[str] = None,
+        target_clip_count: Optional[int] = None,
+        processing_mode: str = "fast",
     ) -> Any:
         """
         Analyze transcript with AI to find relevant segments.
         This is already async, no need to wrap.
         """
         logger.info("Starting AI analysis of transcript")
+        cap = VideoService._output_segment_cap(processing_mode, target_clip_count)
         relevant_parts = await get_most_relevant_parts_by_transcript(
             transcript,
             include_broll=include_broll,
             chunk_size=chunk_size,
             language=language,
             professional_hotwords=professional_hotwords,
+            clip_theme=clip_theme,
+            target_clip_count=target_clip_count,
+            max_output_segments=cap,
         )
         logger.info(
             f"AI analysis complete: {len(relevant_parts.most_relevant_segments)} segments found"
@@ -319,7 +337,11 @@ class VideoService:
         return "youtube" if video_id else "video_url"
 
     @staticmethod
-    def build_segments_json(relevant_parts: Any, processing_mode: str) -> List[Dict[str, Any]]:
+    def build_segments_json(
+        relevant_parts: Any,
+        processing_mode: str,
+        target_clip_count: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
         """Turn AI analysis into render-ready segment dicts."""
         raw_segments = relevant_parts.most_relevant_segments
         segments_json: List[Dict[str, Any]] = []
@@ -449,8 +471,9 @@ class VideoService:
             _ensure_title_zh(seg)
             _ensure_golden_quote_zh(seg)
 
-        if processing_mode == "fast":
-            segments_json = segments_json[: config.fast_mode_max_clips]
+        cap = VideoService._output_segment_cap(processing_mode, target_clip_count)
+        if cap is not None:
+            segments_json = segments_json[:cap]
         return segments_json
 
     @staticmethod
@@ -474,6 +497,8 @@ class VideoService:
         professional_hotwords: Optional[str] = None,
         include_broll: bool = False,
         bilingual_subtitles_mode: str = "auto",
+        clip_theme: Optional[str] = None,
+        target_clip_count: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Complete video processing pipeline.
@@ -609,6 +634,9 @@ class VideoService:
                     language=final_lang,
                     include_broll=include_broll,
                     professional_hotwords=professional_hotwords,
+                    clip_theme=clip_theme,
+                    target_clip_count=target_clip_count,
+                    processing_mode=processing_mode,
                 )
 
             # Step 4: segment list + optional bilingual translation
@@ -616,7 +644,7 @@ class VideoService:
                 raise Exception("Task cancelled")
 
             segments_json = VideoService.build_segments_json(
-                relevant_parts, processing_mode
+                relevant_parts, processing_mode, target_clip_count=target_clip_count
             )
 
             if (

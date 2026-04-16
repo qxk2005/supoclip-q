@@ -35,6 +35,8 @@ class TaskRepository:
         professional_hotwords: Optional[str] = None,
         bilingual_subtitles_mode: str = "auto",
         burn_clip_title_zh: bool = True,
+        target_clip_count: Optional[int] = None,
+        clip_theme: Optional[str] = None,
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -46,6 +48,7 @@ class TaskRepository:
                         caption_template, include_broll, processing_mode, chunk_size, language,
                         audio_fade_in, audio_fade_out, professional_hotwords,
                         bilingual_subtitles_mode, burn_clip_title_zh,
+                        target_clip_count, clip_theme,
                         created_at, updated_at
                     )
                     VALUES (
@@ -53,6 +56,7 @@ class TaskRepository:
                         :caption_template, :include_broll, :processing_mode, :chunk_size, :language,
                         :audio_fade_in, :audio_fade_out, :professional_hotwords,
                         :bilingual_subtitles_mode, :burn_clip_title_zh,
+                        :target_clip_count, :clip_theme,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -75,6 +79,8 @@ class TaskRepository:
                     "professional_hotwords": professional_hotwords,
                     "bilingual_subtitles_mode": bilingual_subtitles_mode,
                     "burn_clip_title_zh": burn_clip_title_zh,
+                    "target_clip_count": target_clip_count,
+                    "clip_theme": clip_theme,
                 },
             )
         except Exception as first_err:
@@ -127,6 +133,8 @@ class TaskRepository:
                         professional_hotwords = :professional_hotwords,
                         bilingual_subtitles_mode = :bilingual_subtitles_mode,
                         burn_clip_title_zh = :burn_clip_title_zh,
+                        target_clip_count = :target_clip_count,
+                        clip_theme = :clip_theme,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -143,6 +151,8 @@ class TaskRepository:
                     "professional_hotwords": professional_hotwords,
                     "bilingual_subtitles_mode": bilingual_subtitles_mode,
                     "burn_clip_title_zh": burn_clip_title_zh,
+                    "target_clip_count": target_clip_count,
+                    "clip_theme": clip_theme,
                 },
             )
             await db.commit()
@@ -205,6 +215,8 @@ class TaskRepository:
                 if getattr(row, "burn_clip_title_zh", None) is None
                 else bool(getattr(row, "burn_clip_title_zh"))
             ),
+            "target_clip_count": getattr(row, "target_clip_count", None),
+            "clip_theme": getattr(row, "clip_theme", None),
             "cache_hit": getattr(row, "cache_hit", False),
             "error_code": getattr(row, "error_code", None),
             "stage_timings_json": getattr(row, "stage_timings_json", None),

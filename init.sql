@@ -102,6 +102,8 @@ CREATE TABLE public.tasks (
     professional_hotwords text,
     bilingual_subtitles_mode character varying(10) DEFAULT 'auto'::character varying NOT NULL,
     burn_clip_title_zh boolean DEFAULT true NOT NULL,
+    target_clip_count integer,
+    clip_theme text,
     CONSTRAINT tasks_progress_check CHECK (((progress >= 0) AND (progress <= 100)))
 );
 

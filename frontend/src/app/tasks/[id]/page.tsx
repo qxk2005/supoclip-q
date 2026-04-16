@@ -102,6 +102,8 @@ interface TaskDetails {
   caption_template?: string;
   include_broll?: boolean;
   burn_clip_title_zh?: boolean;
+  target_clip_count?: number | null;
+  clip_theme?: string | null;
 }
 
 interface FontOption {
@@ -748,6 +750,23 @@ export default function TaskPage() {
                   </>
                 )}
               </div>
+              {(task.target_clip_count != null && task.target_clip_count !== undefined) ||
+              (task.clip_theme && task.clip_theme.trim()) ? (
+                <p className="text-xs text-stone-500 mb-2 max-w-2xl">
+                  {task.target_clip_count != null && task.target_clip_count !== undefined ? (
+                    <span>目标约 {task.target_clip_count} 条片段</span>
+                  ) : null}
+                  {task.target_clip_count != null &&
+                  task.target_clip_count !== undefined &&
+                  task.clip_theme &&
+                  task.clip_theme.trim()
+                    ? " · "
+                    : null}
+                  {task.clip_theme && task.clip_theme.trim() ? (
+                    <span>主题：{task.clip_theme.trim()}</span>
+                  ) : null}
+                </p>
+              ) : null}
               <div className="flex items-center gap-4 text-sm text-gray-600">
                 <Badge variant="outline" className="capitalize">
                   {task.source_type}

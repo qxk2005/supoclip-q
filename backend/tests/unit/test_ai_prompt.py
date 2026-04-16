@@ -2,14 +2,12 @@ from src.ai import build_transcript_analysis_prompt, transcript_analysis_system_
 
 
 def test_system_prompt_enforces_grounding_rules():
-    assert "Use only the provided transcript lines and timestamps" in (
+    assert "Use only provided transcript lines and timestamps" in (
         transcript_analysis_system_prompt
     )
-    assert "Do not invent facts, tone, or context" in (
-        transcript_analysis_system_prompt
-    )
+    assert "Do not invent facts" in transcript_analysis_system_prompt
     assert "DOMAIN GLOSSARY" in transcript_analysis_system_prompt
-    assert "speech-recognition mis-hearings" in transcript_analysis_system_prompt
+    assert "ASR mis-hearings" in transcript_analysis_system_prompt
 
 
 def test_build_transcript_analysis_prompt_requires_transcript_fidelity():
@@ -32,6 +30,20 @@ def test_build_transcript_analysis_prompt_includes_glossary_when_hotwords_set():
     assert "DOMAIN GLOSSARY" in prompt
     assert "Kubernetes" in prompt
     assert "Docker" in prompt
+
+
+def test_build_transcript_analysis_prompt_includes_theme_and_count_when_set():
+    prompt = build_transcript_analysis_prompt(
+        transcript="[00:00 - 00:10] Hello world",
+        clip_theme="pricing strategy",
+        target_clip_count=5,
+        chunk_index=0,
+        total_chunks=2,
+    )
+    assert "CLIP THEME" in prompt
+    assert "pricing strategy" in prompt
+    assert "USER TARGET FOR THE FULL VIDEO" in prompt
+    assert "about 5 clips" in prompt
 
 
 def test_build_transcript_analysis_prompt_mentions_broll_only_when_enabled():

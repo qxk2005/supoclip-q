@@ -67,9 +67,13 @@ class TaskService:
         source_type: str,
         processing_mode: str,
         professional_hotwords: Optional[str] = None,
+        target_clip_count: Optional[int] = None,
+        clip_theme: Optional[str] = None,
     ) -> str:
         hw = (professional_hotwords or "").strip()
-        payload = f"{source_type}|{processing_mode}|{hw}|{url.strip()}"
+        th = (clip_theme or "").strip()
+        tc = "" if target_clip_count is None else str(int(target_clip_count))
+        payload = f"{source_type}|{processing_mode}|{hw}|{tc}|{th}|{url.strip()}"
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _is_stale_queued_task(self, task: Dict[str, Any]) -> bool:
@@ -109,6 +113,8 @@ class TaskService:
         professional_hotwords: Optional[str] = None,
         bilingual_subtitles_mode: str = "auto",
         burn_clip_title_zh: bool = True,
+        target_clip_count: Optional[int] = None,
+        clip_theme: Optional[str] = None,
     ) -> str:
         """
         Create a new task with associated source.
@@ -152,6 +158,8 @@ class TaskService:
             professional_hotwords=professional_hotwords,
             bilingual_subtitles_mode=bilingual_subtitles_mode,
             burn_clip_title_zh=burn_clip_title_zh,
+            target_clip_count=target_clip_count,
+            clip_theme=clip_theme,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -191,8 +199,15 @@ class TaskService:
                 raise ValueError(f"Task details not found for task_id: {task_id}")
 
             hotwords = (task_details.get("professional_hotwords") or "").strip() or None
+            tcc = task_details.get("target_clip_count")
+            cth = (task_details.get("clip_theme") or "").strip() or None
             cache_key = self._build_cache_key(
-                url, source_type, processing_mode, hotwords
+                url,
+                source_type,
+                processing_mode,
+                hotwords,
+                int(tcc) if tcc is not None else None,
+                cth,
             )
 
             cache_entry = await self.cache_repo.get_cache(self.db, cache_key)
@@ -265,6 +280,8 @@ class TaskService:
                 professional_hotwords=hotwords,
                 include_broll=bool(task_details.get("include_broll", False)),
                 bilingual_subtitles_mode=bilingual_mode,
+                clip_theme=cth,
+                target_clip_count=int(tcc) if tcc is not None else None,
             )
             stage_timings["pipeline_seconds"] = round(
                 perf_counter() - pipeline_start, 3
@@ -713,14 +730,23 @@ class TaskService:
             professional_hotwords=hotwords,
         )
         final_lang = lang if lang and lang != "auto" else (detected_lang or "en")
+        tcc = task.get("target_clip_count")
+        theme_val = (task.get("clip_theme") or "").strip() or None
         relevant = await self.video_service.analyze_transcript(
             transcript,
             chunk_size=chunk_size,
             language=final_lang,
             include_broll=bool(task.get("include_broll", False)),
             professional_hotwords=hotwords,
+            clip_theme=theme_val,
+            target_clip_count=int(tcc) if tcc is not None else None,
+            processing_mode=processing_mode,
         )
-        segments = self.video_service.build_segments_json(relevant, processing_mode)
+        segments = self.video_service.build_segments_json(
+            relevant,
+            processing_mode,
+            target_clip_count=int(tcc) if tcc is not None else None,
+        )
 
         transcript_data = load_cached_transcript_data(video_path)
         bilingual_mode = (task.get("bilingual_subtitles_mode") or "auto").strip().lower()

@@ -208,7 +208,7 @@ Quality over quantity.
 """
 
 # Second-chance prompt when the model returns prose / thinking but no parseable JSON.
-_JSON_RETRY_USER_PREFIX = (
+_JSON_RETRY_PREFIX = (
     "Your previous reply was NOT valid JSON. Output ONE JSON object only: no thinking, "
     "no 'Thinking Process', no markdown fences, no commentary. First character must be '{'.\n"
     'Schema: {"summary": string (zh-CN), "key_topics": string[] (zh-CN), '
@@ -217,7 +217,7 @@ _JSON_RETRY_USER_PREFIX = (
     "relevance_score (number 0-1), reasoning (short zh-CN), virality_score (integer 0-100), "
     "optional hook_type, title_zh (short zh-CN headline, ~8-18 characters), "
     "golden_quote_zh (zh-CN, prefer ONE line ~10-22 chars; second line only if needed).\n\n"
-    "Transcript:\n\n"
+    "Follow the full task below (including transcript and any theme/count constraints).\n\n"
 )
 
 # Lazy-loaded agent to avoid import-time failures when API keys aren't set
@@ -280,6 +280,10 @@ def build_transcript_analysis_prompt(
     include_broll: bool = False,
     language: str = "en",
     professional_hotwords: Optional[str] = None,
+    clip_theme: Optional[str] = None,
+    target_clip_count: Optional[int] = None,
+    chunk_index: int = 0,
+    total_chunks: int = 1,
 ) -> str:
     """Build the grounded task prompt for transcript analysis."""
     broll_instruction = ""
@@ -310,10 +314,42 @@ DOMAIN GLOSSARY (professional / product terms; one entry per line or comma-separ
 Use these exact spellings in segment.text when the transcript wording is a likely automatic-speech-recognition error for the same term or concept. Keep segment boundaries and timestamps strictly aligned with the transcript; do not paraphrase for style.
 """
 
+    theme_block = ""
+    th = (clip_theme or "").strip()
+    if th:
+        theme_block = f"""
+CLIP THEME (user request; language may vary):
+"{th}"
+
+When ranking and selecting segments:
+- Strongly prefer moments that clearly discuss, illustrate, or relate to this theme.
+- Set relevance_score higher when the spoken content matches the theme; lower when only weakly related.
+- If this excerpt barely touches the theme, return fewer strong segments rather than stretching weak matches.
+"""
+
+    count_block = ""
+    tc = target_clip_count
+    if tc is not None:
+        tc = max(1, min(tc, config.max_clips))
+        parts = max(1, total_chunks)
+        idx = max(0, chunk_index)
+        # Enough candidates per chunk for a global top-N after merging; capped to control JSON size.
+        per_chunk_budget = max(
+            1, min(14, (tc + parts - 1) // parts + 2)
+        )
+        count_block = f"""
+USER TARGET FOR THE FULL VIDEO: about {tc} clips after all transcript parts are merged.
+This transcript is excerpt {idx + 1} of {parts} (non-overlapping segments of the full video).
+For THIS excerpt only, include at most {per_chunk_budget} objects in most_relevant_segments.
+Prefer diverse, non-overlapping moments with strong hooks; do not pad with weak filler.
+"""
+
     return f"""Analyze this video transcript and identify the most engaging segments for short-form content.
 
 {lang_instruction}
 {glossary_block}
+{theme_block}
+{count_block}
 - Explanations (reasoning, virality_reasoning, summary, key_topics): Simplified Chinese.
 - segment.text: exact transcript wording only (do not translate segment.text into Chinese here).
 
@@ -915,12 +951,24 @@ async def get_most_relevant_parts_by_transcript(
     chunk_size: int = 15000,
     language: str = "en",
     professional_hotwords: Optional[str] = None,
+    clip_theme: Optional[str] = None,
+    target_clip_count: Optional[int] = None,
+    max_output_segments: Optional[int] = None,
 ) -> TranscriptAnalysis:
     """
     Get the most relevant parts of a transcript by processing it in chunks to handle long inputs.
     """
     logger.info(
-        f"Starting AI analysis of transcript ({len(transcript)} chars), include_broll={include_broll}, chunk_size={chunk_size}, language={language}, has_hotwords={bool((professional_hotwords or '').strip())}"
+        "Starting AI analysis of transcript (%s chars), include_broll=%s, chunk_size=%s, "
+        "language=%s, has_hotwords=%s, has_theme=%s, target_clip_count=%s, max_output_segments=%s",
+        len(transcript),
+        include_broll,
+        chunk_size,
+        language,
+        bool((professional_hotwords or "").strip()),
+        bool((clip_theme or "").strip()),
+        target_clip_count,
+        max_output_segments,
     )
 
     # Chunking strategy to handle long transcripts
@@ -937,7 +985,8 @@ async def get_most_relevant_parts_by_transcript(
     if current_chunk:
         transcript_chunks.append(current_chunk)
 
-    logger.info(f"Split transcript into {len(transcript_chunks)} chunks for analysis.")
+    num_chunks = len(transcript_chunks)
+    logger.info(f"Split transcript into {num_chunks} chunks for analysis.")
 
     all_segments = []
     all_summaries = []
@@ -948,17 +997,20 @@ async def get_most_relevant_parts_by_transcript(
         agent = get_transcript_agent()
 
         for i, chunk in enumerate(transcript_chunks):
-            logger.info(f"Analyzing chunk {i + 1}/{len(transcript_chunks)}...")
+            logger.info(f"Analyzing chunk {i + 1}/{num_chunks}...")
             analysis = None
             try:
-                result = await agent.run(
-                    build_transcript_analysis_prompt(
-                        transcript=chunk,
-                        include_broll=include_broll,
-                        language=language,
-                        professional_hotwords=professional_hotwords,
-                    )
+                user_prompt = build_transcript_analysis_prompt(
+                    transcript=chunk,
+                    include_broll=include_broll,
+                    language=language,
+                    professional_hotwords=professional_hotwords,
+                    clip_theme=clip_theme,
+                    target_clip_count=target_clip_count,
+                    chunk_index=i,
+                    total_chunks=num_chunks,
                 )
+                result = await agent.run(user_prompt)
 
                 if hasattr(result, "output"):
                     out = result.output
@@ -978,7 +1030,9 @@ async def get_most_relevant_parts_by_transcript(
                                 snippet,
                             )
                             try:
-                                result_fix = await agent.run(_JSON_RETRY_USER_PREFIX + chunk)
+                                result_fix = await agent.run(
+                                    _JSON_RETRY_PREFIX + user_prompt
+                                )
                                 out_fix = getattr(result_fix, "output", None)
                                 if isinstance(out_fix, LeanTranscriptAnalysis):
                                     analysis = lean_transcript_analysis_to_full(out_fix)
@@ -1070,6 +1124,10 @@ async def get_most_relevant_parts_by_transcript(
             ),
             reverse=True,
         )
+
+        if max_output_segments is not None:
+            cap = max(1, min(int(max_output_segments), config.max_clips))
+            validated_segments = validated_segments[:cap]
 
         final_analysis = TranscriptAnalysis(
             most_relevant_segments=validated_segments,

@@ -75,6 +75,30 @@ def _normalize_professional_hotwords(value: Any) -> Optional[str]:
     return s[:8000]
 
 
+def _normalize_target_clip_count(value: Any) -> Optional[int]:
+    """User-desired clip count; clamped to [1, MAX_CLIPS]. None = legacy per-mode defaults."""
+    if value is None:
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    cfg = get_config()
+    return max(1, min(cfg.max_clips, n))
+
+
+def _normalize_clip_theme(value: Any) -> Optional[str]:
+    """Optional free-text theme to bias AI segment selection."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not s:
+        return None
+    return s[:2000]
+
+
 def _coerce_bool(value: Any, default: bool = False) -> bool:
     """Parse booleans from JSON, form strings, or numeric flags."""
     if isinstance(value, bool):
@@ -182,6 +206,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     )
     # Default on: golden quote burn-in matches user expectation when 金句 exists in metadata
     burn_clip_title_zh = _coerce_bool(data.get("burn_clip_title_zh"), True)
+    target_clip_count = _normalize_target_clip_count(data.get("target_clip_count"))
+    clip_theme = _normalize_clip_theme(data.get("clip_theme"))
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -209,6 +235,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             professional_hotwords=professional_hotwords,
             bilingual_subtitles_mode=bilingual_subtitles_mode,
             burn_clip_title_zh=burn_clip_title_zh,
+            target_clip_count=target_clip_count,
+            clip_theme=clip_theme,
         )
 
         # Get source type for worker
