@@ -149,6 +149,7 @@ export default function Home() {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(PREF_AUDIO_FADE_OUT) === "1";
   });
+  const [burnClipTitleZh, setBurnClipTitleZh] = useState(true);
 
   useEffect(() => {
     localStorage.setItem(PREF_AUDIO_FADE_IN, audioFadeIn ? "1" : "0");
@@ -599,6 +600,7 @@ export default function Home() {
           bilingual_subtitles_mode: bilingualSubtitlesMode,
           audio_fade_in: audioFadeIn,
           audio_fade_out: audioFadeOut,
+          burn_clip_title_zh: burnClipTitleZh,
         }),
       });
 
@@ -1251,6 +1253,23 @@ export default function Home() {
                     <Switch
                       checked={audioFadeOut}
                       onCheckedChange={setAudioFadeOut}
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
+                    <div className="flex items-center gap-3">
+                      <Type className="w-4 h-4 text-rose-600" />
+                      <div>
+                        <h3 className="text-sm font-medium text-stone-900">烧录中文金句</h3>
+                        <p className="text-xs text-stone-500">
+                          将每条片段的「金句」以大号字叠在画面顶部片内标题区，整段成片持续显示；优先一行，必要时才折行。口播字幕叠在最上层
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={burnClipTitleZh}
+                      onCheckedChange={setBurnClipTitleZh}
                       disabled={isLoading}
                     />
                   </div>

@@ -180,6 +180,8 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     bilingual_subtitles_mode = _normalize_bilingual_subtitles_mode(
         data.get("bilingual_subtitles_mode", "auto")
     )
+    # Default on: golden quote burn-in matches user expectation when 金句 exists in metadata
+    burn_clip_title_zh = _coerce_bool(data.get("burn_clip_title_zh"), True)
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -206,6 +208,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             audio_fade_out=audio_fade_out,
             professional_hotwords=professional_hotwords,
             bilingual_subtitles_mode=bilingual_subtitles_mode,
+            burn_clip_title_zh=burn_clip_title_zh,
         )
 
         # Get source type for worker
@@ -666,8 +669,16 @@ class TaskSettingsUpdate(BaseModel):
     audio_fade_out: bool = False
     processing_mode: Literal['fast', 'balanced', 'quality']
     apply_to_existing: bool
+    burn_clip_title_zh: bool = True
 
-    @field_validator("include_broll", "audio_fade_in", "audio_fade_out", "apply_to_existing", mode="before")
+    @field_validator(
+        "include_broll",
+        "audio_fade_in",
+        "audio_fade_out",
+        "apply_to_existing",
+        "burn_clip_title_zh",
+        mode="before",
+    )
     @classmethod
     def _coerce_setting_bools(cls, value: Any) -> bool:
         return _coerce_bool(value, False)
@@ -701,6 +712,7 @@ async def apply_task_settings(
             settings.audio_fade_out,
             settings.processing_mode,
             settings.apply_to_existing,
+            burn_clip_title_zh=settings.burn_clip_title_zh,
         )
         return {"task": task, "message": "Task settings updated"}
     except ValueError as e:

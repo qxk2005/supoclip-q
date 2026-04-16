@@ -101,6 +101,7 @@ CREATE TABLE public.tasks (
     language character varying(10) DEFAULT 'auto'::character varying,
     professional_hotwords text,
     bilingual_subtitles_mode character varying(10) DEFAULT 'auto'::character varying NOT NULL,
+    burn_clip_title_zh boolean DEFAULT true NOT NULL,
     CONSTRAINT tasks_progress_check CHECK (((progress >= 0) AND (progress <= 100)))
 );
 
@@ -128,7 +129,9 @@ CREATE TABLE public.generated_clips (
     hook_type character varying(50),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    text_translation text
+    text_translation text,
+    title_zh character varying(120),
+    golden_quote_zh character varying(200)
 );
 
 CREATE TABLE public.processing_cache (

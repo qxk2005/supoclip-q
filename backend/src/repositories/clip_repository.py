@@ -10,6 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 _CLIP_TEXT_TRANSLATION_UNSET = object()
+_CLIP_TITLE_ZH_UNSET = object()
+_CLIP_GOLDEN_QUOTE_ZH_UNSET = object()
 
 
 class ClipRepository:
@@ -35,6 +37,8 @@ class ClipRepository:
         shareability_score: int = 0,
         hook_type: Optional[str] = None,
         text_translation: Optional[str] = None,
+        title_zh: Optional[str] = None,
+        golden_quote_zh: Optional[str] = None,
     ) -> str:
         """Create a new clip record and return its ID."""
         base_params = {
@@ -55,18 +59,20 @@ class ClipRepository:
             "shareability_score": shareability_score,
             "hook_type": hook_type,
             "text_translation": text_translation,
+            "title_zh": title_zh,
+            "golden_quote_zh": golden_quote_zh,
         }
         try:
             result = await db.execute(
                 sa_text("""
                     INSERT INTO generated_clips
                     (task_id, filename, file_path, start_time, end_time, duration,
-                     text, text_translation, relevance_score, reasoning, clip_order,
+                     text, text_translation, title_zh, golden_quote_zh, relevance_score, reasoning, clip_order,
                      virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
                      created_at)
                     VALUES
                     (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                     :text, :text_translation, :relevance_score, :reasoning, :clip_order,
+                     :text, :text_translation, :title_zh, :golden_quote_zh, :relevance_score, :reasoning, :clip_order,
                      :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
                      NOW())
                     RETURNING id
@@ -80,43 +86,70 @@ class ClipRepository:
                     sa_text("""
                         INSERT INTO generated_clips
                         (task_id, filename, file_path, start_time, end_time, duration,
-                         text, relevance_score, reasoning, clip_order,
+                         text, text_translation, title_zh, relevance_score, reasoning, clip_order,
                          virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
                          created_at)
                         VALUES
                         (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                         :text, :relevance_score, :reasoning, :clip_order,
+                         :text, :text_translation, :title_zh, :relevance_score, :reasoning, :clip_order,
                          :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
                          NOW())
                         RETURNING id
                     """),
-                    {k: v for k, v in base_params.items() if k != "text_translation"},
+                    {
+                        k: v
+                        for k, v in base_params.items()
+                        if k != "golden_quote_zh"
+                    },
                 )
             except Exception:
                 await db.rollback()
-                result = await db.execute(
-                    sa_text("""
-                        INSERT INTO generated_clips
-                        (task_id, filename, file_path, start_time, end_time, duration,
-                         text, relevance_score, reasoning, clip_order, created_at)
-                        VALUES
-                        (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
-                         :text, :relevance_score, :reasoning, :clip_order, NOW())
-                        RETURNING id
-                    """),
-                    {
-                        "task_id": task_id,
-                        "filename": filename,
-                        "file_path": file_path,
-                        "start_time": start_time,
-                        "end_time": end_time,
-                        "duration": duration,
-                        "text": text,
-                        "relevance_score": relevance_score,
-                        "reasoning": reasoning,
-                        "clip_order": clip_order,
-                    },
-                )
+                try:
+                    result = await db.execute(
+                        sa_text("""
+                            INSERT INTO generated_clips
+                            (task_id, filename, file_path, start_time, end_time, duration,
+                             text, relevance_score, reasoning, clip_order,
+                             virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
+                             created_at)
+                            VALUES
+                            (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
+                             :text, :relevance_score, :reasoning, :clip_order,
+                             :virality_score, :hook_score, :engagement_score, :value_score, :shareability_score, :hook_type,
+                             NOW())
+                            RETURNING id
+                        """),
+                        {
+                            k: v
+                            for k, v in base_params.items()
+                            if k not in ("text_translation", "title_zh", "golden_quote_zh")
+                        },
+                    )
+                except Exception:
+                    await db.rollback()
+                    result = await db.execute(
+                        sa_text("""
+                            INSERT INTO generated_clips
+                            (task_id, filename, file_path, start_time, end_time, duration,
+                             text, relevance_score, reasoning, clip_order, created_at)
+                            VALUES
+                            (:task_id, :filename, :file_path, :start_time, :end_time, :duration,
+                             :text, :relevance_score, :reasoning, :clip_order, NOW())
+                            RETURNING id
+                        """),
+                        {
+                            "task_id": task_id,
+                            "filename": filename,
+                            "file_path": file_path,
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "duration": duration,
+                            "text": text,
+                            "relevance_score": relevance_score,
+                            "reasoning": reasoning,
+                            "clip_order": clip_order,
+                        },
+                    )
         clip_id = result.scalar()
         if not clip_id:
             raise RuntimeError("Failed to create clip: no ID returned")
@@ -130,7 +163,7 @@ class ClipRepository:
             result = await db.execute(
                 sa_text("""
                     SELECT id, filename, file_path, start_time, end_time, duration,
-                           text, text_translation, relevance_score, reasoning, clip_order, created_at,
+                           text, text_translation, title_zh, golden_quote_zh, relevance_score, reasoning, clip_order, created_at,
                            virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type
                     FROM generated_clips
                     WHERE task_id = :task_id
@@ -177,6 +210,8 @@ class ClipRepository:
                     "duration": row.duration,
                     "text": row.text,
                     "text_translation": getattr(row, "text_translation", None),
+                    "title_zh": getattr(row, "title_zh", None),
+                    "golden_quote_zh": getattr(row, "golden_quote_zh", None),
                     "relevance_score": row.relevance_score,
                     "reasoning": row.reasoning,
                     "clip_order": row.clip_order,
@@ -236,7 +271,7 @@ class ClipRepository:
                 sa_text(
                     """
                     SELECT id, task_id, filename, file_path, start_time, end_time, duration,
-                           text, text_translation, relevance_score, reasoning, clip_order,
+                           text, text_translation, title_zh, golden_quote_zh, relevance_score, reasoning, clip_order,
                            virality_score, hook_score, engagement_score, value_score, shareability_score, hook_type,
                            created_at
                     FROM generated_clips
@@ -288,6 +323,8 @@ class ClipRepository:
             "duration": row.duration,
             "text": row.text,
             "text_translation": getattr(row, "text_translation", None),
+            "title_zh": getattr(row, "title_zh", None),
+            "golden_quote_zh": getattr(row, "golden_quote_zh", None),
             "relevance_score": row.relevance_score,
             "reasoning": row.reasoning,
             "clip_order": row.clip_order,
@@ -312,6 +349,8 @@ class ClipRepository:
         duration: float,
         text: str,
         text_translation: Any = _CLIP_TEXT_TRANSLATION_UNSET,
+        title_zh: Any = _CLIP_TITLE_ZH_UNSET,
+        golden_quote_zh: Any = _CLIP_GOLDEN_QUOTE_ZH_UNSET,
     ) -> None:
         """Update core clip metadata and file path."""
         base_params = {
@@ -323,7 +362,11 @@ class ClipRepository:
             "duration": duration,
             "text": text,
         }
-        if text_translation is _CLIP_TEXT_TRANSLATION_UNSET:
+        if (
+            text_translation is _CLIP_TEXT_TRANSLATION_UNSET
+            and title_zh is _CLIP_TITLE_ZH_UNSET
+            and golden_quote_zh is _CLIP_GOLDEN_QUOTE_ZH_UNSET
+        ):
             await db.execute(
                 sa_text(
                     """
@@ -342,22 +385,34 @@ class ClipRepository:
             )
         else:
             try:
+                sets = [
+                    "filename = :filename",
+                    "file_path = :file_path",
+                    "start_time = :start_time",
+                    "end_time = :end_time",
+                    "duration = :duration",
+                    "text = :text",
+                    "updated_at = NOW()",
+                ]
+                params = dict(base_params)
+                if text_translation is not _CLIP_TEXT_TRANSLATION_UNSET:
+                    sets.insert(-1, "text_translation = :text_translation")
+                    params["text_translation"] = text_translation
+                if title_zh is not _CLIP_TITLE_ZH_UNSET:
+                    sets.insert(-1, "title_zh = :title_zh")
+                    params["title_zh"] = title_zh
+                if golden_quote_zh is not _CLIP_GOLDEN_QUOTE_ZH_UNSET:
+                    sets.insert(-1, "golden_quote_zh = :golden_quote_zh")
+                    params["golden_quote_zh"] = golden_quote_zh
                 await db.execute(
                     sa_text(
-                        """
+                        f"""
                         UPDATE generated_clips
-                        SET filename = :filename,
-                            file_path = :file_path,
-                            start_time = :start_time,
-                            end_time = :end_time,
-                            duration = :duration,
-                            text = :text,
-                            text_translation = :text_translation,
-                            updated_at = NOW()
+                        SET {", ".join(sets)}
                         WHERE id = :clip_id
                         """
                     ),
-                    {**base_params, "text_translation": text_translation},
+                    params,
                 )
             except Exception:
                 await db.rollback()

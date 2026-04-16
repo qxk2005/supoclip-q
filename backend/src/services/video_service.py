@@ -167,6 +167,7 @@ class VideoService:
         audio_fade_out: bool = False,
         processing_mode: str = "fast",
         bilingual_subtitles: bool = False,
+        burn_clip_title_zh: bool = True,
     ) -> List[Dict[str, Any]]:
         """
         Create standalone video clips from segments with optional subtitles.
@@ -174,7 +175,10 @@ class VideoService:
         output_format: 'vertical' (9:16) or 'original' (keep source size, faster).
         add_subtitles: False skips subtitles; with original format uses ffmpeg stream copy (no re-encode).
         """
-        logger.info(f"Creating {len(segments)} video clips subtitles={add_subtitles}")
+        logger.info(
+            f"Creating {len(segments)} video clips subtitles={add_subtitles} "
+            f"burn_title_zh={burn_clip_title_zh}"
+        )
         clips_output_dir = Path(config.temp_dir) / "clips"
         clips_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -193,6 +197,7 @@ class VideoService:
             audio_fade_out,
             processing_mode,
             bilingual_subtitles,
+            burn_clip_title_zh,
         )
 
         logger.info(f"Successfully created {len(clips_info)} clips")
@@ -214,6 +219,7 @@ class VideoService:
         audio_fade_out: bool = False,
         processing_mode: str = "fast",
         bilingual_subtitles: bool = False,
+        burn_clip_title_zh: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """Render a single clip in the thread pool and return clip_info dict, or None on failure."""
         try:
@@ -235,6 +241,8 @@ class VideoService:
             clip_path = output_dir / clip_filename
 
             seg_text = (segment.get("text") or "").strip() or None
+            title_zh = (segment.get("title_zh") or "").strip() or None
+            golden_q = (segment.get("golden_quote_zh") or "").strip() or None
             success = await run_in_thread(
                 create_optimized_clip,
                 video_path,
@@ -252,6 +260,9 @@ class VideoService:
                 processing_mode,
                 bilingual_subtitles,
                 seg_text,
+                title_zh,
+                golden_q,
+                burn_clip_title_zh,
             )
 
             if not success:
@@ -269,6 +280,8 @@ class VideoService:
                 "text": segment.get("text", ""),
                 "text_translation": segment.get("text_translation")
                 or segment.get("text_zh"),
+                "title_zh": segment.get("title_zh"),
+                "golden_quote_zh": segment.get("golden_quote_zh"),
                 "relevance_score": segment.get("relevance_score", 0.0),
                 "reasoning": segment.get("reasoning", ""),
                 "virality_score": segment.get("virality_score", 0),
@@ -334,6 +347,10 @@ class VideoService:
                         "end_time": segment.get("end_time"),
                         "text": segment.get("text", ""),
                         "text_translation": tz,
+                        "title_zh": (segment.get("title_zh") or "").strip()[:80],
+                        "golden_quote_zh": (segment.get("golden_quote_zh") or "").strip()[
+                            :120
+                        ],
                         "relevance_score": segment.get("relevance_score", 0.0),
                         "reasoning": segment.get("reasoning", ""),
                         "virality_score": v["total_score"],
@@ -360,6 +377,12 @@ class VideoService:
                         "end_time": segment.end_time,
                         "text": segment.text,
                         "text_translation": tz,
+                        "title_zh": (getattr(segment, "title_zh", None) or "").strip()[
+                            :80
+                        ],
+                        "golden_quote_zh": (getattr(segment, "golden_quote_zh", None) or "").strip()[
+                            :120
+                        ],
                         "relevance_score": segment.relevance_score,
                         "reasoning": segment.reasoning,
                         "virality_score": vir.total_score if vir else 0,
@@ -383,6 +406,12 @@ class VideoService:
                         "end_time": getattr(segment, "end_time", ""),
                         "text": getattr(segment, "text", "") or "",
                         "text_translation": tz,
+                        "title_zh": (getattr(segment, "title_zh", None) or "").strip()[
+                            :80
+                        ],
+                        "golden_quote_zh": (getattr(segment, "golden_quote_zh", None) or "").strip()[
+                            :120
+                        ],
                         "relevance_score": float(
                             getattr(segment, "relevance_score", 0.0) or 0.0
                         ),
@@ -395,6 +424,31 @@ class VideoService:
                         "hook_type": hook_type,
                     }
                 )
+
+        def _ensure_title_zh(seg: Dict[str, Any]) -> None:
+            tz = (seg.get("title_zh") or "").strip()
+            if tz:
+                seg["title_zh"] = tz[:80]
+                return
+            r = (seg.get("reasoning") or "").strip()
+            if r:
+                line = r.split("。")[0].split(".")[0].split("\n")[0].strip()
+                seg["title_zh"] = (line[:28] if line else "")[:80]
+            else:
+                seg["title_zh"] = ""
+
+        def _ensure_golden_quote_zh(seg: Dict[str, Any]) -> None:
+            g = (seg.get("golden_quote_zh") or "").strip()
+            if g:
+                seg["golden_quote_zh"] = g[:120]
+                return
+            t = (seg.get("title_zh") or "").strip()
+            seg["golden_quote_zh"] = (t[:120] if t else "")
+
+        for seg in segments_json:
+            _ensure_title_zh(seg)
+            _ensure_golden_quote_zh(seg)
+
         if processing_mode == "fast":
             segments_json = segments_json[: config.fast_mode_max_clips]
         return segments_json

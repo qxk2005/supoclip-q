@@ -43,6 +43,8 @@ interface Clip {
   start_time: string;
   end_time: string;
   text: string;
+  title_zh?: string | null;
+  golden_quote_zh?: string | null;
   video_url: string;
 }
 
@@ -925,7 +927,16 @@ export default function TaskEditPage() {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-medium text-sm text-black">片段 {clip.clip_order}</p>
+                            <p className="font-medium text-sm text-black">
+                              {clip.title_zh?.trim()
+                                ? clip.title_zh.trim()
+                                : `片段 ${clip.clip_order}`}
+                            </p>
+                            {clip.golden_quote_zh?.trim() ? (
+                              <p className="text-xs text-stone-600 whitespace-pre-line mt-0.5 line-clamp-3">
+                                {clip.golden_quote_zh.trim()}
+                              </p>
+                            ) : null}
                             <p className="text-xs text-gray-500">{clip.start_time} - {clip.end_time}</p>
                             <p className="text-xs text-gray-500">{formatDuration(clip.duration)}</p>
                           </div>

@@ -58,6 +58,21 @@ class TranscriptSegment(BaseModel):
             "Keep it verbatim or near-verbatim, and do not paraphrase or merge non-contiguous lines."
         )
     )
+    title_zh: str = Field(
+        default="",
+        max_length=80,
+        description=(
+            "One short Simplified Chinese headline (about 8–18 characters) capturing the single most important hook."
+        ),
+    )
+    golden_quote_zh: str = Field(
+        default="",
+        max_length=120,
+        description=(
+            "One memorable Simplified Chinese 'golden quote' summarizing the clip's core idea for a persistent on-video title. "
+            "Prefer a SINGLE line (~10–22 characters). Use a second line only if truly necessary; never pad or split into two on purpose."
+        ),
+    )
     relevance_score: float = Field(
         description="Relevance score from 0.0 to 1.0", ge=0.0, le=1.0
     )
@@ -95,6 +110,22 @@ class LeanTranscriptSegment(BaseModel):
     hook_type: Optional[
         Literal["question", "statement", "statistic", "story", "contrast", "none"]
     ] = Field(default="none")
+    title_zh: str = Field(
+        default="",
+        max_length=80,
+        description=(
+            "One short Simplified Chinese headline (about 8–18 characters) for UI and optional on-video title; "
+            "must highlight the single strongest reason to watch this clip."
+        ),
+    )
+    golden_quote_zh: str = Field(
+        default="",
+        max_length=120,
+        description=(
+            "Golden quote in Simplified Chinese: the most representative phrase for this clip's central idea (persistent in-video title). "
+            "Prefer ONE line (~10–22 characters). A second line only if the idea cannot fit one line; do not force two lines."
+        ),
+    )
 
 
 class LeanBRollOpportunity(BaseModel):
@@ -167,6 +198,8 @@ GROUNDING RULES:
 
 SEGMENT FIELDS (per segment):
 - start_time, end_time, text, relevance_score (0-1), reasoning (short Chinese), virality_score (0-100 integer), hook_type.
+- title_zh: one punchy Simplified Chinese headline (about 8–18 characters) for the clip card; not a full sentence.
+- golden_quote_zh: the best "golden quote" in Simplified Chinese for a persistent on-video title (core idea). Prefer ONE line (~10–22 characters). Second line only if necessary; never pad to fill two lines.
 
 TIMING:
 - Prefer ~10-60 seconds per segment; respect natural boundaries.
@@ -182,7 +215,8 @@ _JSON_RETRY_USER_PREFIX = (
     '"most_relevant_segments": object[]}.\n'
     "Each segment object: start_time, end_time, text (verbatim from transcript), "
     "relevance_score (number 0-1), reasoning (short zh-CN), virality_score (integer 0-100), "
-    "optional hook_type.\n\n"
+    "optional hook_type, title_zh (short zh-CN headline, ~8-18 characters), "
+    "golden_quote_zh (zh-CN, prefer ONE line ~10-22 chars; second line only if needed).\n\n"
     "Transcript:\n\n"
 )
 
@@ -722,11 +756,15 @@ def lean_transcript_analysis_to_full(lean: LeanTranscriptAnalysis) -> Transcript
             hook_type=hook_type,
             virality_reasoning=vr,
         )
+        tz = (getattr(seg, "title_zh", None) or "").strip()
+        gq = (getattr(seg, "golden_quote_zh", None) or "").strip()
         segments_out.append(
             TranscriptSegment(
                 start_time=seg.start_time,
                 end_time=seg.end_time,
                 text=seg.text,
+                title_zh=tz,
+                golden_quote_zh=gq,
                 relevance_score=seg.relevance_score,
                 reasoning=seg.reasoning,
                 virality=vir,
@@ -837,6 +875,8 @@ def _transcript_analysis_from_parsed_json(parsed: Any) -> Optional[TranscriptAna
             "start_time": st,
             "end_time": et,
             "text": seg_text,
+            "title_zh": (segment.get("title_zh") or "").strip(),
+            "golden_quote_zh": (segment.get("golden_quote_zh") or "").strip(),
             "relevance_score": float(segment.get("relevance_score", 0.9) or 0.9),
             "reasoning": segment.get("reasoning") or "AI generated clip.",
             "virality": {

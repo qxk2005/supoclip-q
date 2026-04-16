@@ -42,6 +42,13 @@ from ..subtitle_translation import (
 logger = logging.getLogger(__name__)
 
 
+def _burn_clip_title_zh_from_db(value: Any) -> bool:
+    """Explicit False disables burn; missing/NULL means on (legacy rows)."""
+    if value is None:
+        return True
+    return bool(value)
+
+
 class TaskService:
     """Service for task workflow orchestration."""
 
@@ -101,6 +108,7 @@ class TaskService:
         audio_fade_out: bool = False,
         professional_hotwords: Optional[str] = None,
         bilingual_subtitles_mode: str = "auto",
+        burn_clip_title_zh: bool = True,
     ) -> str:
         """
         Create a new task with associated source.
@@ -143,6 +151,7 @@ class TaskService:
             audio_fade_out=audio_fade_out,
             professional_hotwords=professional_hotwords,
             bilingual_subtitles_mode=bilingual_subtitles_mode,
+            burn_clip_title_zh=burn_clip_title_zh,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -278,6 +287,9 @@ class TaskService:
                 audio_fade_in = audio_fade_in or bool(job_audio_fade_in)
             if job_audio_fade_out is not None:
                 audio_fade_out = audio_fade_out or bool(job_audio_fade_out)
+            burn_clip_title_zh = _burn_clip_title_zh_from_db(
+                task_details.get("burn_clip_title_zh")
+            )
             if (audio_fade_in != db_fade_in) or (audio_fade_out != db_fade_out):
                 logger.info(
                     "Merged worker audio fade flags into task %s: db in/out=%s/%s "
@@ -323,6 +335,9 @@ class TaskService:
                 if td_refresh:
                     audio_fade_in = bool(td_refresh.get("audio_fade_in", False))
                     audio_fade_out = bool(td_refresh.get("audio_fade_out", False))
+                    burn_clip_title_zh = _burn_clip_title_zh_from_db(
+                        td_refresh.get("burn_clip_title_zh")
+                    )
                 if job_audio_fade_in is not None:
                     audio_fade_in = audio_fade_in or bool(job_audio_fade_in)
                 if job_audio_fade_out is not None:
@@ -353,6 +368,7 @@ class TaskService:
                     audio_fade_out,
                     processing_mode,
                     use_bilingual_subtitles,
+                    burn_clip_title_zh,
                 )
                 if clip_info is None:
                     continue  # Skip failed clip
@@ -378,6 +394,8 @@ class TaskService:
                     hook_type=clip_info.get("hook_type"),
                     text_translation=clip_info.get("text_translation")
                     or clip_info.get("text_zh"),
+                    title_zh=clip_info.get("title_zh"),
+                    golden_quote_zh=clip_info.get("golden_quote_zh"),
                 )
                 await self.db.commit()
                 clip_ids.append(clip_id)
@@ -588,6 +606,7 @@ class TaskService:
         audio_fade_out: bool,
         processing_mode: str,
         apply_to_existing: bool,
+        burn_clip_title_zh: bool = True,
     ) -> Dict[str, Any]:
         """Update task-level settings and optionally regenerate all clips."""
         await self.task_repo.update_task_settings(
@@ -601,6 +620,7 @@ class TaskService:
             audio_fade_in,
             audio_fade_out,
             processing_mode,
+            burn_clip_title_zh=burn_clip_title_zh,
         )
 
         if apply_to_existing:
@@ -725,6 +745,7 @@ class TaskService:
                     "Regenerate: clip transcript zh translation fill skipped: %s", e
                 )
 
+        burn_clip_title_zh = _burn_clip_title_zh_from_db(task.get("burn_clip_title_zh"))
         clips_info = await self.video_service.create_video_clips(
             video_path,
             segments,
@@ -738,6 +759,7 @@ class TaskService:
             audio_fade_out,
             processing_mode,
             use_bilingual,
+            burn_clip_title_zh=burn_clip_title_zh,
         )
 
         await self.clip_repo.delete_clips_by_task(self.db, task_id)
@@ -765,6 +787,8 @@ class TaskService:
                 hook_type=clip_info.get("hook_type"),
                 text_translation=clip_info.get("text_translation")
                 or clip_info.get("text_zh"),
+                title_zh=clip_info.get("title_zh"),
+                golden_quote_zh=clip_info.get("golden_quote_zh"),
             )
             clip_ids.append(clip_id)
 
@@ -858,6 +882,8 @@ class TaskService:
             shareability_score=clip.get("shareability_score", 0),
             hook_type=clip.get("hook_type"),
             text_translation=clip.get("text_translation"),
+            title_zh=clip.get("title_zh"),
+            golden_quote_zh=clip.get("golden_quote_zh"),
         )
 
         await self.clip_repo.reorder_task_clips(self.db, task_id)
@@ -890,6 +916,18 @@ class TaskService:
             if (c.get("text_translation") or "").strip()
         ]
         merged_zh = "\n".join(zh_parts) if zh_parts else None
+        title_parts = [
+            (c.get("title_zh") or "").strip()
+            for c in ordered
+            if (c.get("title_zh") or "").strip()
+        ]
+        merged_title = " · ".join(title_parts)[:120] if title_parts else None
+        g_parts = [
+            (c.get("golden_quote_zh") or "").strip()
+            for c in ordered
+            if (c.get("golden_quote_zh") or "").strip()
+        ]
+        merged_golden = "\n".join(g_parts)[:200] if g_parts else None
 
         first = ordered[0]
         await self.clip_repo.update_clip(
@@ -902,6 +940,8 @@ class TaskService:
             duration,
             text,
             text_translation=merged_zh,
+            title_zh=merged_title,
+            golden_quote_zh=merged_golden,
         )
 
         for clip in ordered[1:]:

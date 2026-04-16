@@ -51,7 +51,9 @@ import {
   Settings2,
   Type,
   Clapperboard,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
@@ -66,6 +68,8 @@ interface Clip {
   duration: number;
   text: string;
   text_translation?: string | null;
+  title_zh?: string | null;
+  golden_quote_zh?: string | null;
   relevance_score: number;
   reasoning: string;
   clip_order: number;
@@ -97,6 +101,7 @@ interface TaskDetails {
   font_color?: string;
   caption_template?: string;
   include_broll?: boolean;
+  burn_clip_title_zh?: boolean;
 }
 
 interface FontOption {
@@ -137,6 +142,7 @@ export default function TaskPage() {
   const [projectAudioFadeIn, setProjectAudioFadeIn] = useState(false);
   const [projectAudioFadeOut, setProjectAudioFadeOut] = useState(false);
   const [projectProcessingMode, setProjectProcessingMode] = useState<'fast' | 'balanced' | 'quality'>('fast');
+  const [projectBurnClipTitleZh, setProjectBurnClipTitleZh] = useState(true);
   const [isApplyingSettings, setIsApplyingSettings] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [availableFonts, setAvailableFonts] = useState<FontOption[]>([]);
@@ -193,6 +199,7 @@ export default function TaskPage() {
         setProjectAudioFadeIn(Boolean(taskData.audio_fade_in));
         setProjectAudioFadeOut(Boolean(taskData.audio_fade_out));
         setProjectProcessingMode(taskData.processing_mode || "fast");
+        setProjectBurnClipTitleZh(taskData.burn_clip_title_zh !== false);
 
         // Fetch clips if task is completed or processing (incremental clips)
         if (taskData.status === "completed" || taskData.status === "processing") {
@@ -556,11 +563,12 @@ export default function TaskPage() {
     await fetchTaskStatus();
   };
 
-  const handleApplyProjectSettings = async () => {
-    if (!session?.user?.id || !params.id) return;
+  const handleApplyProjectSettings = async (): Promise<boolean> => {
+    if (!session?.user?.id || !params.id) return false;
     const parsedSize = Number(projectFontSize || "24");
     const safeFontSize = Number.isFinite(parsedSize) ? Math.max(12, Math.min(72, Math.round(parsedSize))) : 24;
     const normalizedColor = /^#[0-9A-Fa-f]{6}$/.test(projectFontColor) ? projectFontColor : "#FFFFFF";
+    const applyToAllClips = task?.status === "completed";
 
     setIsApplyingSettings(true);
     try {
@@ -578,14 +586,33 @@ export default function TaskPage() {
           audio_fade_in: projectAudioFadeIn,
           audio_fade_out: projectAudioFadeOut,
           processing_mode: projectProcessingMode,
-          apply_to_existing: task?.status === "completed",
+          apply_to_existing: applyToAllClips,
+          burn_clip_title_zh: projectBurnClipTitleZh,
         }),
       });
       if (!response.ok) {
         alert(await buildSupportError(response, "应用设置失败"));
-        return;
+        return false;
       }
       await fetchTaskStatus();
+      if (applyToAllClips) {
+        toast.success("设置已应用", {
+          description: "全部成片已按新样式重新生成，预览与下载已更新。",
+          duration: 6000,
+        });
+      } else {
+        toast.success("设置已保存", {
+          description: "尚未输出的片段将使用以上样式；生成完成后请在此页查看。",
+          duration: 5000,
+        });
+      }
+      return true;
+    } catch (err) {
+      console.error(err);
+      toast.error("应用设置失败", {
+        description: err instanceof Error ? err.message : "请稍后重试。",
+      });
+      return false;
     } finally {
       setIsApplyingSettings(false);
     }
@@ -867,7 +894,17 @@ export default function TaskPage() {
                         <div className="p-6 flex-1">
                           <div className="flex items-start justify-between mb-4">
                             <div>
-                              <h3 className="font-semibold text-lg text-black mb-1">片段 {clip.clip_order}</h3>
+                              <h3 className="font-semibold text-lg text-black mb-1">
+                                {clip.title_zh?.trim()
+                                  ? clip.title_zh.trim()
+                                  : `片段 ${clip.clip_order}`}
+                              </h3>
+                              {clip.golden_quote_zh?.trim() ? (
+                                <p className="text-sm text-stone-700 whitespace-pre-line leading-snug mb-2">
+                                  <span className="text-xs font-medium text-stone-400 mr-1.5">金句</span>
+                                  {clip.golden_quote_zh.trim()}
+                                </p>
+                              ) : null}
                               <div className="flex items-center gap-2 text-sm text-gray-600">
                                 <span>{clip.start_time} - {clip.end_time}</span>
                                 <span>•</span>
@@ -994,6 +1031,15 @@ export default function TaskPage() {
               )}
             </div>
 
+            {task?.burn_clip_title_zh === false && (
+              <Alert className="border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-50">
+                <AlertCircle className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+                <AlertDescription>
+                  当前任务未开启「烧录中文金句」，已生成的成片画面内不会显示金句标题。请打开「项目设置」、勾选「烧录中文金句」，并点击「应用到全部片段」重新渲染成片。
+                </AlertDescription>
+              </Alert>
+            )}
+
             {clips.map((clip) => (
               <Card key={clip.id} className="overflow-hidden">
                 <CardContent className="p-0">
@@ -1015,7 +1061,17 @@ export default function TaskPage() {
                             />
                             加入合并
                           </label>
-                          <h3 className="font-semibold text-lg text-black mb-1">片段 {clip.clip_order}</h3>
+                          <h3 className="font-semibold text-lg text-black mb-1">
+                            {clip.title_zh?.trim()
+                              ? clip.title_zh.trim()
+                              : `片段 ${clip.clip_order}`}
+                          </h3>
+                          {clip.golden_quote_zh?.trim() ? (
+                            <p className="text-sm text-stone-700 whitespace-pre-line leading-snug mb-2">
+                              <span className="text-xs font-medium text-stone-400 mr-1.5">金句</span>
+                              {clip.golden_quote_zh.trim()}
+                            </p>
+                          ) : null}
                           <div className="flex items-center gap-2 text-sm text-gray-600">
                             <span>
                               {clip.start_time} - {clip.end_time}
@@ -1248,8 +1304,14 @@ export default function TaskPage() {
       </div>
 
       {task && (
-        <Sheet open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen}>
-          <SheetContent side="right" className="sm:max-w-md overflow-y-auto">
+        <Sheet
+          open={settingsSheetOpen}
+          onOpenChange={(open) => {
+            if (!open && isApplyingSettings) return;
+            setSettingsSheetOpen(open);
+          }}
+        >
+          <SheetContent side="right" className="sm:max-w-md overflow-y-auto relative flex flex-col">
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <Settings2 className="w-4 h-4" />
@@ -1263,7 +1325,7 @@ export default function TaskPage() {
               </SheetDescription>
             </SheetHeader>
 
-            <div className="space-y-5 px-4">
+            <div className="space-y-5 px-4 flex-1 min-h-0 overflow-y-auto">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-gray-500">字体</label>
                 <Select value={projectFontFamily} onValueChange={setProjectFontFamily}>
@@ -1355,6 +1417,21 @@ export default function TaskPage() {
                 包含 B-Roll
               </label>
 
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectBurnClipTitleZh}
+                  onChange={(e) => setProjectBurnClipTitleZh(e.target.checked)}
+                  className="rounded mt-0.5"
+                />
+                <span>
+                  烧录中文大标题到成片
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    将 AI 金句以大号字叠在画面顶部片内标题区，整段成片持续显示；优先一行。关闭则仅在列表中显示。口播字幕叠在最上层。
+                  </span>
+                </span>
+              </label>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-gray-500">处理模式</label>
                 <Select
@@ -1408,22 +1485,52 @@ export default function TaskPage() {
               </label>
             </div>
 
-            <SheetFooter>
+            <SheetFooter className="flex-col gap-2 sm:flex-col">
               <Button
-                className="w-full"
-                onClick={() => {
-                  void handleApplyProjectSettings();
-                  setSettingsSheetOpen(false);
+                className="w-full gap-2"
+                onClick={async () => {
+                  const ok = await handleApplyProjectSettings();
+                  if (ok) setSettingsSheetOpen(false);
                 }}
                 disabled={isApplyingSettings}
               >
-                {isApplyingSettings
-                  ? "应用中…"
-                  : task.status === "completed"
-                    ? "应用到全部片段"
-                    : "保存设置"}
+                {isApplyingSettings ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                    {task.status === "completed" ? "正在重新渲染成片…" : "正在保存…"}
+                  </>
+                ) : task.status === "completed" ? (
+                  "应用到全部片段"
+                ) : (
+                  "保存设置"
+                )}
               </Button>
+              {task.status === "completed" && !isApplyingSettings && (
+                <p className="text-[11px] text-center text-muted-foreground leading-snug">
+                  点击后将请求服务器重新生成全部片段，耗时取决于视频长度，请等待成功提示后再操作。
+                </p>
+              )}
             </SheetFooter>
+
+            {isApplyingSettings && (
+              <div
+                className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background/90 backdrop-blur-sm px-6 text-center border-l border-border"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-11 w-11 animate-spin text-primary shrink-0" aria-hidden />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {task.status === "completed" ? "正在按新设置重新渲染成片" : "正在保存项目设置"}
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-[280px] mx-auto leading-relaxed">
+                    {task.status === "completed"
+                      ? "服务器正在处理，可能需要数分钟。请勿关闭此面板或重复点击，完成后会显示成功提示并自动关闭。"
+                      : "请稍候，完成后会显示成功提示。"}
+                  </p>
+                </div>
+              </div>
+            )}
           </SheetContent>
         </Sheet>
       )}

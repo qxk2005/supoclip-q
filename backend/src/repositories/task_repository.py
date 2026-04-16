@@ -34,6 +34,7 @@ class TaskRepository:
         audio_fade_out: bool = False,
         professional_hotwords: Optional[str] = None,
         bilingual_subtitles_mode: str = "auto",
+        burn_clip_title_zh: bool = True,
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -44,14 +45,14 @@ class TaskRepository:
                         id, user_id, source_id, status, font_family, font_size, font_color,
                         caption_template, include_broll, processing_mode, chunk_size, language,
                         audio_fade_in, audio_fade_out, professional_hotwords,
-                        bilingual_subtitles_mode,
+                        bilingual_subtitles_mode, burn_clip_title_zh,
                         created_at, updated_at
                     )
                     VALUES (
                         :task_id, :user_id, :source_id, :status, :font_family, :font_size, :font_color,
                         :caption_template, :include_broll, :processing_mode, :chunk_size, :language,
                         :audio_fade_in, :audio_fade_out, :professional_hotwords,
-                        :bilingual_subtitles_mode,
+                        :bilingual_subtitles_mode, :burn_clip_title_zh,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -73,6 +74,7 @@ class TaskRepository:
                     "audio_fade_out": audio_fade_out,
                     "professional_hotwords": professional_hotwords,
                     "bilingual_subtitles_mode": bilingual_subtitles_mode,
+                    "burn_clip_title_zh": burn_clip_title_zh,
                 },
             )
         except Exception as first_err:
@@ -124,6 +126,7 @@ class TaskRepository:
                         audio_fade_out = :audio_fade_out,
                         professional_hotwords = :professional_hotwords,
                         bilingual_subtitles_mode = :bilingual_subtitles_mode,
+                        burn_clip_title_zh = :burn_clip_title_zh,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -139,6 +142,7 @@ class TaskRepository:
                     "audio_fade_out": audio_fade_out,
                     "professional_hotwords": professional_hotwords,
                     "bilingual_subtitles_mode": bilingual_subtitles_mode,
+                    "burn_clip_title_zh": burn_clip_title_zh,
                 },
             )
             await db.commit()
@@ -195,6 +199,11 @@ class TaskRepository:
             "professional_hotwords": getattr(row, "professional_hotwords", None),
             "bilingual_subtitles_mode": getattr(
                 row, "bilingual_subtitles_mode", "auto"
+            ),
+            "burn_clip_title_zh": (
+                True
+                if getattr(row, "burn_clip_title_zh", None) is None
+                else bool(getattr(row, "burn_clip_title_zh"))
             ),
             "cache_hit": getattr(row, "cache_hit", False),
             "error_code": getattr(row, "error_code", None),
@@ -300,6 +309,7 @@ class TaskRepository:
         audio_fade_in: bool,
         audio_fade_out: bool,
         processing_mode: str,
+        burn_clip_title_zh: bool = True,
     ) -> None:
         """Update task styling and processing settings."""
         try:
@@ -315,6 +325,7 @@ class TaskRepository:
                         audio_fade_in = :audio_fade_in,
                         audio_fade_out = :audio_fade_out,
                         processing_mode = :processing_mode,
+                        burn_clip_title_zh = :burn_clip_title_zh,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -329,6 +340,7 @@ class TaskRepository:
                     "audio_fade_in": audio_fade_in,
                     "audio_fade_out": audio_fade_out,
                     "processing_mode": processing_mode,
+                    "burn_clip_title_zh": burn_clip_title_zh,
                 },
             )
         except Exception:

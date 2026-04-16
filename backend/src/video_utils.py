@@ -1956,6 +1956,163 @@ def create_fade_subtitles(
     logger.info(f"Created {len(subtitle_clips)} fade subtitle elements")
     return subtitle_clips
 
+
+def normalize_golden_quote_for_burn(
+    golden_quote_zh: Optional[str],
+    title_zh: Optional[str],
+    *,
+    max_single_line_chars: int = 26,
+    max_line_chars_when_wrapped: int = 22,
+) -> str:
+    """
+    Prefer a single line for on-video golden quote; wrap to a second line only when too long.
+    Falls back to title_zh when golden quote is empty.
+    """
+    raw = (golden_quote_zh or "").strip()
+    if not raw:
+        raw = (title_zh or "").strip()
+    if not raw:
+        return ""
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    # Prefer one line: join model lines with spaces (do not keep line breaks unless we overflow)
+    merged = " ".join(
+        " ".join(ln.split()) for ln in raw.split("\n") if ln.strip()
+    ).strip()
+    merged = " ".join(merged.split())
+    if len(merged) <= max_single_line_chars:
+        return merged
+    # Second line only when content exceeds one line capacity
+    line1 = merged[:max_single_line_chars]
+    rest = merged[max_single_line_chars : max_single_line_chars + max_line_chars_when_wrapped].strip()
+    if not rest:
+        return line1
+    return f"{line1}\n{rest}"
+
+
+def create_zh_golden_quote_overlay_clips(
+    video_width: int,
+    video_height: int,
+    quote_text: str,
+    duration: float,
+    *,
+    _depth: int = 0,
+) -> List[Any]:
+    """
+    Persistent in-video title: large Simplified Chinese golden quote fixed in the **top** safe band
+    (documentary-style lower-third of the upper area), full clip duration, with a dark backing bar.
+    Composited *before* word subtitles so bottom captions stay readable on top.
+    """
+    quote_text = (quote_text or "").strip()
+    if not quote_text or duration <= 0.05:
+        return []
+    max_w = get_subtitle_max_width(video_width)
+    # Top "title strip": avoid covering face center and bottom subtitles (~72%+)
+    y_top = int(video_height * 0.045)
+    two_lines = "\n" in quote_text
+    # Generous top band so long one-line titles still fit on small vertical outputs
+    title_strip_bottom = int(video_height * (0.40 if two_lines else 0.34))
+
+    processor_base = VideoProcessor(
+        "SourceHanSansSC-Regular.otf",
+        48,
+        "#FFFFFF",
+        text_for_font_detection=quote_text,
+    )
+    if not processor_base.font_path:
+        logger.warning("Golden quote overlay: no font path resolved, skipping")
+        return []
+
+    text_clip = None
+    bar_clip = None
+    fs = 0
+    for try_fs in range(
+        max(36, min(56, int(video_width * 0.068))),
+        18,
+        -2,
+    ):
+        fs = try_fs
+        sw = max(3, fs // 14)
+        interline, margin = _cjk_caption_interline_and_margin(fs, sw)
+        try:
+            tc_kw: Dict[str, Any] = dict(
+                text=quote_text,
+                font=processor_base.font_path,
+                font_size=fs,
+                color="#FFFEF8",
+                stroke_color="black",
+                stroke_width=sw,
+                method="caption",
+                size=(max_w, None),
+                text_align="center",
+                interline=interline,
+                margin=margin,
+                vertical_align="top",
+            )
+            candidate = TextClip(**tc_kw)
+        except Exception as e:
+            logger.warning("Golden quote TextClip failed at fs=%s: %s", fs, e)
+            continue
+
+        th = candidate.size[1] if candidate.size else fs * 3
+        tw = candidate.size[0] if candidate.size else max_w
+        pad = max(10, fs // 3)
+        if y_top + th + pad > title_strip_bottom:
+            try:
+                candidate.close()
+            except Exception:
+                pass
+            continue
+
+        text_clip = (
+            candidate.with_duration(duration)
+            .with_start(0)
+            .with_position(("center", y_top))
+        )
+        bar_w = min(video_width - 12, tw + pad * 2)
+        bar_h = th + pad
+        bar_x = (video_width - bar_w) // 2
+        bar_y = max(0, y_top - pad // 2)
+        try:
+            bar_clip = (
+                ColorClip(size=(bar_w, bar_h), color=(18, 18, 22))
+                .with_duration(duration)
+                .with_start(0)
+                .with_position((bar_x, bar_y))
+            )
+        except Exception:
+            bar_clip = None
+        break
+
+    if text_clip is None:
+        if _depth == 0:
+            first = quote_text.split("\n")[0].strip()
+            short = (first[:20].rstrip() + "…") if len(first) > 20 else first[:16]
+            if short and short != quote_text and len(short) >= 2:
+                return create_zh_golden_quote_overlay_clips(
+                    video_width,
+                    video_height,
+                    short,
+                    duration,
+                    _depth=1,
+                )
+        logger.warning("Golden quote overlay: could not fit text in top title strip")
+        return []
+
+    layers: List[Any] = []
+    if bar_clip is not None:
+        layers.append(bar_clip)
+    layers.append(text_clip)
+    logger.info(
+        "Golden quote in-video title: fs=%s line_count=%s y_top=%s strip_bottom=%s duration=%.2fs",
+        fs,
+        quote_text.count("\n") + 1,
+        y_top,
+        title_strip_bottom,
+        duration,
+    )
+    return layers
+
+
 def create_optimized_clip(
     video_path: Path,
     start_time: float,
@@ -1972,6 +2129,9 @@ def create_optimized_clip(
     processing_mode: str = "fast",
     bilingual_subtitles: bool = False,
     subtitle_segment_text: Optional[str] = None,
+    clip_title_zh: Optional[str] = None,
+    clip_golden_quote_zh: Optional[str] = None,
+    burn_clip_title_zh: bool = True,
 ) -> bool:
     """Create clip with optional subtitles and audio fades."""
     try:
@@ -1981,14 +2141,26 @@ def create_optimized_clip(
             return False
 
         keep_original = output_format == "original"
+        burn_quote_text = normalize_golden_quote_for_burn(
+            clip_golden_quote_zh,
+            clip_title_zh,
+        )
+        need_burn_overlay = bool(burn_clip_title_zh and burn_quote_text)
         logger.info(
             f"Creating clip: {start_time:.1f}s - {end_time:.1f}s ({duration:.1f}s) "
             f"subtitles={add_subtitles} template '{caption_template}' format={'original' if keep_original else 'vertical'} "
-            f"audio_fade_in={audio_fade_in} audio_fade_out={audio_fade_out}"
+            f"audio_fade_in={audio_fade_in} audio_fade_out={audio_fade_out} "
+            f"burn_golden_quote={need_burn_overlay}"
         )
 
         # Fast path: no subtitles, no fades, original format = ffmpeg stream copy
-        if not add_subtitles and keep_original and not audio_fade_in and not audio_fade_out:
+        if (
+            not add_subtitles
+            and keep_original
+            and not audio_fade_in
+            and not audio_fade_out
+            and not need_burn_overlay
+        ):
             import subprocess
             result = subprocess.run(
                 [
@@ -2052,8 +2224,21 @@ def create_optimized_clip(
                 f"Applied audio fades (fade_s={fade_s:.2f}s fade_in={audio_fade_in} fade_out={audio_fade_out})"
             )
 
-        # Add faster-whisper subtitles with template support
+        # Composite order: base → golden quote (upper safe band) → subtitles (top layer)
         final_clips = [processed_clip]
+
+        if need_burn_overlay:
+            g_layers = create_zh_golden_quote_overlay_clips(
+                target_width,
+                target_height,
+                burn_quote_text,
+                duration,
+            )
+            if g_layers:
+                final_clips.extend(g_layers)
+                logger.info(
+                    "Added %s golden-quote overlay layer(s)", len(g_layers)
+                )
 
         if add_subtitles:
             logger.info(f"Creating subtitles for clip with template: {caption_template}")
@@ -2077,7 +2262,10 @@ def create_optimized_clip(
 
         # Compose and encode — MoviePy 2 CompositeVideoClip may not keep the base layer's audio
         if len(final_clips) > 1:
-            composite = CompositeVideoClip(final_clips)
+            composite = CompositeVideoClip(
+                final_clips,
+                size=(target_width, target_height),
+            ).with_duration(duration)
             if processed_clip.audio is not None:
                 final_clip = composite.with_audio(processed_clip.audio)
             else:
@@ -2129,10 +2317,12 @@ def create_clips_from_segments(
     audio_fade_out: bool = False,
     processing_mode: str = "fast",
     bilingual_subtitles: bool = False,
+    burn_clip_title_zh: bool = True,
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments with template support."""
     logger.info(
-        f"Creating {len(segments)} clips subtitles={add_subtitles} template '{caption_template}'"
+        f"Creating {len(segments)} clips subtitles={add_subtitles} template '{caption_template}' "
+        f"burn_title_zh={burn_clip_title_zh}"
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2178,6 +2368,9 @@ def create_clips_from_segments(
                 processing_mode,
                 bilingual_subtitles,
                 (segment.get("text") or "").strip() or None,
+                (segment.get("title_zh") or "").strip() or None,
+                (segment.get("golden_quote_zh") or "").strip() or None,
+                burn_clip_title_zh,
             )
 
             if success:
@@ -2191,6 +2384,8 @@ def create_clips_from_segments(
                     "text": segment["text"],
                     "text_translation": segment.get("text_translation")
                     or segment.get("text_zh"),
+                    "title_zh": segment.get("title_zh"),
+                    "golden_quote_zh": segment.get("golden_quote_zh"),
                     "relevance_score": segment["relevance_score"],
                     "reasoning": segment["reasoning"],
                     # Include virality data if available
@@ -2339,6 +2534,7 @@ def create_clips_with_transitions(
     audio_fade_out: bool = False,
     processing_mode: str = "fast",
     bilingual_subtitles: bool = False,
+    burn_clip_title_zh: bool = True,
 ) -> List[Dict[str, Any]]:
     """Create standalone video clips without inter-clip transitions.
 
@@ -2364,6 +2560,7 @@ def create_clips_with_transitions(
         audio_fade_out,
         processing_mode,
         bilingual_subtitles,
+        burn_clip_title_zh,
     )
 
 
