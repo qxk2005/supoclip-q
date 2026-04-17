@@ -100,7 +100,10 @@ class LeanTranscriptSegment(BaseModel):
     )
     relevance_score: float = Field(ge=0.0, le=1.0)
     reasoning: str = Field(
-        description="One or two short sentences in Simplified Chinese (under ~120 characters)."
+        description=(
+            "One or two short sentences in Simplified Chinese (under ~120 characters): "
+            "what the clip contains and how prior lines in the same range set up the payoff."
+        )
     )
     virality_score: int = Field(
         ge=0,
@@ -188,8 +191,9 @@ FORBIDDEN:
 - The first non-whitespace character of your entire reply MUST be `{` or `[` starting the JSON value.
 
 CORE OBJECTIVES:
-1. Pick moments that work as standalone short clips (hooks, value, emotion, entertainment).
-2. Each segment must be a contiguous range from the transcript timestamps.
+1. Pick moments that work as standalone short clips: a viewer who did not watch the full video must understand *what is being said and why it matters*.
+2. Prefer a **complete narrative beat**: enough **prior context** (problem, premise, definition, or story setup) so the **highlight / punchline / takeaway** is not a non sequitur. Do not optimize only for a dense “quote” if that quote depends on earlier explanation in the same contiguous stretch.
+3. Each segment must be a contiguous range from the transcript timestamps.
 
 GROUNDING RULES:
 1. Use only provided transcript lines and timestamps.
@@ -202,7 +206,9 @@ SEGMENT FIELDS (per segment):
 - golden_quote_zh: the best "golden quote" in Simplified Chinese for a persistent on-video title (core idea). Prefer ONE line (~10–22 characters). Second line only if necessary; never pad to fill two lines.
 
 TIMING:
-- Prefer ~10-60 seconds per segment; respect natural boundaries.
+- Default to **~25–90 seconds** per segment when the topic needs setup; include earlier contiguous lines until the clip feels whole.
+- Use **~15–45 seconds** only when the selected span is already self-contained (question + answer, or a full mini-story) without missing prerequisites.
+- Avoid ultra-tight cuts whose main “value” line only makes sense after prior sentences you did not include—**extend `start_time` backward** on the transcript until the setup is present (still one contiguous range).
 
 Quality over quantity.
 """
@@ -368,15 +374,16 @@ The transcript is formatted as one line per timestamped span, for example:
 Follow this workflow:
 1. Read the transcript as a sequence of timestamped spans.
 2. Select only contiguous ranges that already exist in the transcript.
-3. Prefer moments with a strong hook, clear payoff, emotional charge, or concrete value.
-4. For each chosen segment, use the earliest timestamp in the selected range as start_time and the latest timestamp in the selected range as end_time.{broll_instruction}
+3. For each candidate “highlight”, check whether a **first-time viewer** would miss **who/what/why** without earlier lines; if yes, widen the range **backward** (and forward if the payoff continues) so the clip includes that setup—still one contiguous block.
+4. Prefer moments with a clear arc: setup → tension or question → insight, payoff, or emotional beat (not an isolated fragment).
+5. For each chosen segment, use the earliest timestamp in the selected range as start_time and the latest timestamp in the selected range as end_time.{broll_instruction}
 
 Critical accuracy requirements:
 - Do not fabricate or embellish content.
 - Do not use timestamps that are not present in the transcript.
 - Do not merge separate non-contiguous moments into one segment.
 - segment.text must reflect only the spoken content inside the selected time range.
-- If a span lacks enough context to stand alone, expand to nearby contiguous lines rather than guessing.
+- If a span lacks enough context to stand alone, **expand start_time backward** (and end_time if needed) along contiguous transcript lines until the idea is self-contained; never invent bridging text.
 - If there is a tradeoff between "viral" and "accurate", choose accuracy.
 - Do not reject or penalize a segment simply because of the subject matter; stay content-neutral and assess clip quality only.
 
@@ -1110,7 +1117,8 @@ async def get_most_relevant_parts_by_transcript(
                 start_seconds = int(start_parts[0]) * 60 + int(start_parts[1])
                 end_seconds = int(end_parts[0]) * 60 + int(end_parts[1])
                 duration = end_seconds - start_seconds
-                if duration <= 0 or duration < 5:
+                # Reject fragments that are too short to plausibly include setup + payoff (prompts ask for context).
+                if duration <= 0 or duration < 12:
                     continue
                 if segment.virality:
                     calculated_total = (

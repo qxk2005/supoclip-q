@@ -98,6 +98,23 @@ class SubtitleSegmentTrimTests(unittest.TestCase):
         self.assertAlmostEqual(out[1]["end"], 0.6)
         self.assertAlmostEqual(out[0]["end"], out[1]["start"])
 
+    def test_static_card_times_align_to_next_phrase_start(self):
+        """End extends to next card's first token (ASR), not a reading-speed average."""
+        g1 = [
+            {"text": "hello", "start": 0.0, "end": 0.2},
+            {"text": "world", "start": 0.2, "end": 0.35},
+        ]
+        g2 = [{"text": "next", "start": 1.0, "end": 1.2}]
+        times = video_utils._resolve_static_card_time_ranges(
+            [g1, g2],
+            timeline_end=10.0,
+            gap_between=0.04,
+        )
+        self.assertEqual(times[0][0], 0.0)
+        self.assertAlmostEqual(times[0][1], 1.0 - 0.04)
+        self.assertEqual(times[1][0], 1.0)
+        self.assertAlmostEqual(times[1][1], 1.2)
+
 
 if __name__ == "__main__":
     unittest.main()

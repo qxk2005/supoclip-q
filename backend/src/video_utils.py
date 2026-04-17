@@ -1429,6 +1429,7 @@ def create_bilingual_static_subtitles(
     main_font_size: int,
     secondary_font_size: int,
     phrase_translations: Dict[str, str],
+    clip_timeline_end: Optional[float] = None,
 ) -> List[Any]:
     """
     Chinese primary (main_font_size), English secondary below (secondary_font_size).
@@ -1445,21 +1446,35 @@ def create_bilingual_static_subtitles(
     main_scaled = get_scaled_font_size(main_font_size, video_width)
     sub_scaled = get_scaled_font_size(secondary_font_size, video_width)
 
-    for word_group in group_words_for_bilingual_captions(relevant_words):
+    groups = list(group_words_for_bilingual_captions(relevant_words))
+    tl_end = clip_timeline_end
+    if tl_end is None and relevant_words:
+        tl_end = float(relevant_words[-1]["end"])
+    elif tl_end is None:
+        tl_end = 0.0
+
+    eligible: List[List[Dict]] = []
+    for word_group in groups:
         if not word_group:
             continue
-
-        segment_start = word_group[0]["start"]
-        segment_end = word_group[-1]["end"]
-        segment_duration = segment_end - segment_start
-        if segment_duration < 0.1:
-            continue
-
         tokens = [w["text"] for w in word_group]
         en_line = " ".join(t.strip() for t in tokens).strip()
         if not en_line:
             continue
+        eligible.append(word_group)
+
+    card_times = _resolve_static_card_time_ranges(
+        eligible,
+        timeline_end=tl_end,
+    )
+
+    for word_group, (segment_start, segment_end) in zip(eligible, card_times):
+        tokens = [w["text"] for w in word_group]
+        en_line = " ".join(t.strip() for t in tokens).strip()
         zh_line = lookup_phrase_translation(phrase_translations, tokens, en_line)
+        segment_duration = segment_end - segment_start
+        if segment_duration < 0.1:
+            continue
 
         try:
             if zh_line:
@@ -1526,6 +1541,7 @@ def create_bilingual_static_subtitles(
                     video_height,
                     {**style_template, "font_size": main_font_size},
                     font_family,
+                    clip_timeline_end=tl_end,
                 )
                 subtitle_clips.extend(single)
 
@@ -1583,17 +1599,18 @@ def create_faster_whisper_subtitles(
     )
 
     if subtitle_segment_text and relevant_words and not bilingual_subtitles:
-        texts_before = [w.get("text") for w in relevant_words]
+        # Keep Whisper per-token start/end for timing; do not redistribute by character
+        # averages (that drifts away from when each phrase actually begins).
         relevant_words = apply_segment_reference_text_to_words(
             relevant_words, subtitle_segment_text
         )
-        if texts_before != [w.get("text") for w in relevant_words]:
-            relevant_words = _retime_subtitle_words_by_char_weights(relevant_words)
 
     if not relevant_words:
         logger.warning("No words found in clip timerange")
         return []
     logger.info(f"Found {len(relevant_words)} relevant words for subtitles.")
+
+    clip_span = max(0.0, float(clip_end - clip_start))
 
     if bilingual_subtitles:
         phrase_map: Dict[str, str] = dict(
@@ -1610,6 +1627,7 @@ def create_faster_whisper_subtitles(
             effective_font_size,
             secondary_size,
             phrase_map,
+            clip_timeline_end=clip_span,
         )
 
     # Choose subtitle creation method based on animation type
@@ -1620,6 +1638,7 @@ def create_faster_whisper_subtitles(
             video_height,
             effective_template,
             effective_font_family,
+            clip_timeline_end=clip_span,
         )
     elif animation_type == "pop":
         return create_pop_subtitles(
@@ -1628,6 +1647,7 @@ def create_faster_whisper_subtitles(
             video_height,
             effective_template,
             effective_font_family,
+            clip_timeline_end=clip_span,
         )
     elif animation_type == "fade":
         return create_fade_subtitles(
@@ -1636,6 +1656,7 @@ def create_faster_whisper_subtitles(
             video_height,
             effective_template,
             effective_font_family,
+            clip_timeline_end=clip_span,
         )
     else:
         # Default static subtitles
@@ -1645,7 +1666,42 @@ def create_faster_whisper_subtitles(
             video_height,
             effective_template,
             effective_font_family,
+            clip_timeline_end=clip_span,
         )
+
+def _resolve_static_card_time_ranges(
+    word_groups: List[List[Dict]],
+    *,
+    timeline_end: float,
+    gap_between: float = 0.04,
+) -> List[Tuple[float, float]]:
+    """
+    Align each subtitle card to ASR word timestamps only (no average reading speed).
+
+    - *start* = first token's ``start`` in the card (when this line begins acoustically).
+    - *end* = at least last token's ``end``, but if the next card exists, extend to just
+      before that card's first token ``start`` so the line stays until the next phrase begins.
+    """
+    if not word_groups:
+        return []
+    tl = max(0.0, float(timeline_end))
+    n = len(word_groups)
+    out: List[Tuple[float, float]] = []
+    for i, wg in enumerate(word_groups):
+        if not wg:
+            continue
+        st = float(wg[0]["start"])
+        last_end = float(wg[-1]["end"])
+        if i + 1 < n and word_groups[i + 1]:
+            nst = float(word_groups[i + 1][0]["start"])
+            en = min(tl, max(last_end, nst - gap_between))
+        else:
+            en = min(tl, last_end)
+        if en <= st:
+            en = min(tl, st + 0.1)
+        out.append((st, en))
+    return out
+
 
 def create_static_subtitles(
     relevant_words: List[Dict],
@@ -1653,6 +1709,7 @@ def create_static_subtitles(
     video_height: int,
     template: Dict,
     font_family: str,
+    clip_timeline_end: Optional[float] = None,
 ) -> List[TextClip]:
     """Create standard static subtitles (original behavior)."""
     subtitle_clips = []
@@ -1687,12 +1744,23 @@ def create_static_subtitles(
             for i in range(0, len(relevant_words), wps)
         ]
 
-    for word_group in word_groups:
+    word_groups = [g for g in word_groups if g]
+
+    tl_end = clip_timeline_end
+    if tl_end is None and relevant_words:
+        tl_end = float(relevant_words[-1]["end"])
+    elif tl_end is None:
+        tl_end = 0.0
+
+    card_times = _resolve_static_card_time_ranges(
+        word_groups,
+        timeline_end=tl_end,
+    )
+
+    for word_group, (segment_start, segment_end) in zip(word_groups, card_times):
         if not word_group:
             continue
 
-        segment_start = word_group[0]["start"]
-        segment_end = word_group[-1]["end"]
         segment_duration = segment_end - segment_start
 
         if segment_duration < 0.1:
@@ -1759,6 +1827,7 @@ def create_karaoke_subtitles(
     video_height: int,
     template: Dict,
     font_family: str,
+    clip_timeline_end: Optional[float] = None,
 ) -> List[TextClip]:
     subtitle_clips = []
     
@@ -1809,18 +1878,30 @@ def create_karaoke_subtitles(
             temp_clip.close()
         return widths
 
-    for word_group in word_groups:
+    gap_b = 0.04
+    tl_k = float(clip_timeline_end) if clip_timeline_end is not None else None
+
+    for gi, word_group in enumerate(word_groups):
         if not word_group:
             continue
 
-        group_start = word_group[0]["start"]
-        group_end = word_group[-1]["end"]
-
         # For each word in the group, create a highlighted version
         for word_idx, current_word in enumerate(word_group):
-            word_start = current_word["start"]
-            word_end = current_word["end"]
-            word_duration = word_end - word_start
+            word_start = float(current_word["start"])
+            whisper_end = float(current_word["end"])
+            if word_idx + 1 < len(word_group):
+                boundary_next = float(word_group[word_idx + 1]["start"])
+            elif gi + 1 < len(word_groups) and word_groups[gi + 1]:
+                boundary_next = float(word_groups[gi + 1][0]["start"])
+            else:
+                boundary_next = None
+            if boundary_next is not None:
+                beat_end = max(whisper_end, boundary_next - gap_b)
+            else:
+                beat_end = whisper_end
+            if tl_k is not None:
+                beat_end = min(beat_end, tl_k)
+            word_duration = max(0.06, beat_end - word_start)
 
             if word_duration < 0.05:
                 continue
@@ -1904,6 +1985,7 @@ def create_pop_subtitles(
     video_height: int,
     template: Dict,
     font_family: str,
+    clip_timeline_end: Optional[float] = None,
 ) -> List[TextClip]:
     subtitle_clips = []
 
@@ -1935,14 +2017,23 @@ def create_pop_subtitles(
             for i in range(0, len(relevant_words), wpg)
         ]
 
-    for word_group in word_groups:
+    tl_end = clip_timeline_end
+    if tl_end is None and relevant_words:
+        tl_end = float(relevant_words[-1]["end"])
+    elif tl_end is None:
+        tl_end = 0.0
+    wg_nonempty = [g for g in word_groups if g]
+    pop_times = _resolve_static_card_time_ranges(
+        wg_nonempty,
+        timeline_end=tl_end,
+    )
+
+    for word_group, (group_start, group_end) in zip(wg_nonempty, pop_times):
         if not word_group:
             continue
 
         # Show the full group text
         group_text = _format_subtitle_word_group(word_group, cjk_primary)
-        group_start = word_group[0]["start"]
-        group_end = word_group[-1]["end"]
         group_duration = group_end - group_start
 
         if group_duration < 0.1:
@@ -2011,6 +2102,7 @@ def create_fade_subtitles(
     video_height: int,
     template: Dict,
     font_family: str,
+    clip_timeline_end: Optional[float] = None,
 ) -> List[TextClip]:
     """Create fade-style subtitles with smooth transitions."""
     subtitle_clips = []
@@ -2045,13 +2137,22 @@ def create_fade_subtitles(
             for i in range(0, len(relevant_words), wpg)
         ]
 
-    for word_group in word_groups:
+    tl_fade = clip_timeline_end
+    if tl_fade is None and relevant_words:
+        tl_fade = float(relevant_words[-1]["end"])
+    elif tl_fade is None:
+        tl_fade = 0.0
+    wg_fade = [g for g in word_groups if g]
+    fade_times = _resolve_static_card_time_ranges(
+        wg_fade,
+        timeline_end=tl_fade,
+    )
+
+    for word_group, (group_start, group_end) in zip(wg_fade, fade_times):
         if not word_group:
             continue
 
         group_text = _format_subtitle_word_group(word_group, cjk_primary)
-        group_start = word_group[0]["start"]
-        group_end = word_group[-1]["end"]
         group_duration = group_end - group_start
 
         if group_duration < 0.1:

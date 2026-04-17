@@ -8,6 +8,8 @@ def test_system_prompt_enforces_grounding_rules():
     assert "Do not invent facts" in transcript_analysis_system_prompt
     assert "DOMAIN GLOSSARY" in transcript_analysis_system_prompt
     assert "ASR mis-hearings" in transcript_analysis_system_prompt
+    assert "complete narrative beat" in transcript_analysis_system_prompt
+    assert "25–90 seconds" in transcript_analysis_system_prompt
 
 
 def test_build_transcript_analysis_prompt_requires_transcript_fidelity():
@@ -19,6 +21,8 @@ def test_build_transcript_analysis_prompt_requires_transcript_fidelity():
     assert "Do not merge separate non-contiguous moments into one segment." in prompt
     assert "If there is a tradeoff between \"viral\" and \"accurate\", choose accuracy." in prompt
     assert "Do not reject or penalize a segment simply because of the subject matter" in prompt
+    assert "first-time viewer" in prompt
+    assert "expand start_time backward" in prompt
     assert "[00:12 - 00:21] A strong opening line" in prompt
 
 
