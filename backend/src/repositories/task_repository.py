@@ -37,6 +37,8 @@ class TaskRepository:
         burn_clip_title_zh: bool = True,
         target_clip_count: Optional[int] = None,
         clip_theme: Optional[str] = None,
+        clip_subtitle_rewhisper: bool = True,
+        clip_subtitle_llm_refine: bool = True,
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -49,6 +51,7 @@ class TaskRepository:
                         audio_fade_in, audio_fade_out, professional_hotwords,
                         bilingual_subtitles_mode, burn_clip_title_zh,
                         target_clip_count, clip_theme,
+                        clip_subtitle_rewhisper, clip_subtitle_llm_refine,
                         created_at, updated_at
                     )
                     VALUES (
@@ -57,6 +60,7 @@ class TaskRepository:
                         :audio_fade_in, :audio_fade_out, :professional_hotwords,
                         :bilingual_subtitles_mode, :burn_clip_title_zh,
                         :target_clip_count, :clip_theme,
+                        :clip_subtitle_rewhisper, :clip_subtitle_llm_refine,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -81,6 +85,8 @@ class TaskRepository:
                     "burn_clip_title_zh": burn_clip_title_zh,
                     "target_clip_count": target_clip_count,
                     "clip_theme": clip_theme,
+                    "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
+                    "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
                 },
             )
         except Exception as first_err:
@@ -135,6 +141,8 @@ class TaskRepository:
                         burn_clip_title_zh = :burn_clip_title_zh,
                         target_clip_count = :target_clip_count,
                         clip_theme = :clip_theme,
+                        clip_subtitle_rewhisper = :clip_subtitle_rewhisper,
+                        clip_subtitle_llm_refine = :clip_subtitle_llm_refine,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -153,6 +161,8 @@ class TaskRepository:
                     "burn_clip_title_zh": burn_clip_title_zh,
                     "target_clip_count": target_clip_count,
                     "clip_theme": clip_theme,
+                    "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
+                    "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
                 },
             )
             await db.commit()
@@ -217,6 +227,12 @@ class TaskRepository:
             ),
             "target_clip_count": getattr(row, "target_clip_count", None),
             "clip_theme": getattr(row, "clip_theme", None),
+            "clip_subtitle_rewhisper": bool(
+                getattr(row, "clip_subtitle_rewhisper", True)
+            ),
+            "clip_subtitle_llm_refine": bool(
+                getattr(row, "clip_subtitle_llm_refine", True)
+            ),
             "cache_hit": getattr(row, "cache_hit", False),
             "error_code": getattr(row, "error_code", None),
             "stage_timings_json": getattr(row, "stage_timings_json", None),
@@ -322,6 +338,8 @@ class TaskRepository:
         audio_fade_out: bool,
         processing_mode: str,
         burn_clip_title_zh: bool = True,
+        clip_subtitle_rewhisper: bool = True,
+        clip_subtitle_llm_refine: bool = True,
     ) -> None:
         """Update task styling and processing settings."""
         try:
@@ -338,6 +356,8 @@ class TaskRepository:
                         audio_fade_out = :audio_fade_out,
                         processing_mode = :processing_mode,
                         burn_clip_title_zh = :burn_clip_title_zh,
+                        clip_subtitle_rewhisper = :clip_subtitle_rewhisper,
+                        clip_subtitle_llm_refine = :clip_subtitle_llm_refine,
                         updated_at = NOW()
                     WHERE id = :task_id
                     """
@@ -353,6 +373,8 @@ class TaskRepository:
                     "audio_fade_out": audio_fade_out,
                     "processing_mode": processing_mode,
                     "burn_clip_title_zh": burn_clip_title_zh,
+                    "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
+                    "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
                 },
             )
         except Exception:

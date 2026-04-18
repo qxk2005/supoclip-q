@@ -4,6 +4,7 @@ Translate English subtitle phrases to Simplified Chinese for bilingual captions.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -27,8 +28,20 @@ class PhraseTranslationBatch(BaseModel):
     items: List[PhraseItem]
 
 
+class SubtitleWordRefinePatch(BaseModel):
+    word_index: int = Field(ge=0, description="0-based index into the ASR word list")
+    replacement: str = Field(
+        description="Corrected surface form for that single token only; same language as input"
+    )
+
+
+class SubtitleWordRefineResult(BaseModel):
+    patches: List[SubtitleWordRefinePatch] = Field(default_factory=list)
+
+
 _phrase_agent: Optional[Agent] = None
 _clip_body_agent: Optional[Agent] = None
+_subtitle_refine_agent: Optional[Agent] = None
 
 
 def _missing_llm_key_error() -> Optional[str]:
@@ -81,6 +94,27 @@ def _get_clip_body_agent() -> Agent:
             output_type=PhraseTranslationBatch,
         )
     return _clip_body_agent
+
+
+def _get_subtitle_refine_agent() -> Agent:
+    """ASR token polish for clip-level re-whisper (glossary / hotwords, minimal edits)."""
+    global _subtitle_refine_agent
+    if _subtitle_refine_agent is None:
+        err = _missing_llm_key_error()
+        if err:
+            raise RuntimeError(err)
+        _subtitle_refine_agent = Agent(
+            model=config.llm,
+            system_prompt=(
+                "You fix automatic-speech-recognition (ASR) token strings using a DOMAIN GLOSSARY when provided. "
+                "Rules: change as little as possible; never merge or split tokens; never reorder tokens; "
+                "only fix clear mis-hearings using the glossary or obvious spelling errors. "
+                "Return structured output: patches with word_index and replacement for that single token only. "
+                "If the ASR is already acceptable, return an empty patches list."
+            ),
+            output_type=SubtitleWordRefineResult,
+        )
+    return _subtitle_refine_agent
 
 
 def clip_segment_text_should_fill_zh_translation(text: str) -> bool:
@@ -337,6 +371,118 @@ async def translate_phrases_batched(
         for en, zh in zip(chunk, zh_list):
             out[en] = zh
     return out
+
+
+async def refine_whisper_words_with_glossary_async(
+    words: List[Dict[str, Any]],
+    hotwords: Optional[str],
+    segment_hint: Optional[str],
+    llm_refine_enabled: Optional[bool] = None,
+) -> List[Dict[str, Any]]:
+    """
+    LLM: token-index patches only so Whisper start/end times stay unchanged.
+    """
+    if not words:
+        return words
+    if llm_refine_enabled is False:
+        return words
+    if llm_refine_enabled is None and not getattr(
+        config, "clip_subtitle_llm_refine", True
+    ):
+        return words
+    try:
+        agent = _get_subtitle_refine_agent()
+    except Exception as e:
+        logger.warning("Subtitle refine agent unavailable: %s", e)
+        return words
+
+    lines = "\n".join(
+        f"{i}\t{(w.get('text') or '').strip()}" for i, w in enumerate(words)
+    )
+    parts = [
+        "ASR words (index TAB token). Output patches only for tokens that need correction.",
+        lines,
+    ]
+    if hotwords and hotwords.strip():
+        parts.append(
+            "DOMAIN GLOSSARY / hotwords (use these spellings when the audio clearly refers to them):\n"
+            + hotwords.strip()[:6000]
+        )
+    if segment_hint and segment_hint.strip():
+        parts.append(
+            "Editor segment excerpt (verbatim; disambiguation only, do not replace the whole clip):\n"
+            + segment_hint.strip()[:4000]
+        )
+    try:
+        result = await agent.run("\n\n".join(parts))
+        out = getattr(result, "output", None)
+        if not isinstance(out, SubtitleWordRefineResult) or not out.patches:
+            return words
+        merged = [dict(w) for w in words]
+        for p in out.patches:
+            i = int(p.word_index)
+            rep = (p.replacement or "").strip()
+            if 0 <= i < len(merged) and rep:
+                merged[i]["text"] = rep
+        return merged
+    except Exception as e:
+        logger.warning("Subtitle LLM refine failed: %s", e)
+        return words
+
+
+def refine_whisper_words_with_glossary_sync(
+    words: List[Dict[str, Any]],
+    hotwords: Optional[str],
+    segment_hint: Optional[str],
+    llm_refine_enabled: Optional[bool] = None,
+) -> List[Dict[str, Any]]:
+    """Sync entrypoint for clip rendering (runs in a worker thread)."""
+    try:
+        return asyncio.run(
+            refine_whisper_words_with_glossary_async(
+                words, hotwords, segment_hint, llm_refine_enabled=llm_refine_enabled
+            )
+        )
+    except RuntimeError as e:
+        if "asyncio.run() cannot be called from a running event loop" in str(e):
+            logger.warning("Subtitle refine skipped (nested event loop): %s", e)
+            return words
+        raise
+
+
+def build_clip_bilingual_phrase_translations_sync(
+    words: List[Dict[str, Any]],
+) -> Dict[str, str]:
+    """
+    Build phrase_translations for one clip from clip-local ASR words (matches on-screen grouping).
+    """
+    from .video_utils import group_words_for_bilingual_captions, normalize_subtitle_phrase_key
+
+    pairs: List[tuple[str, str]] = []
+    seen_keys: set[str] = set()
+    for group in group_words_for_bilingual_captions(words):
+        if not group:
+            continue
+        tokens = [w.get("text") or "" for w in group]
+        display_en = " ".join(t.strip() for t in tokens if t.strip()).strip()
+        if not display_en:
+            continue
+        key = normalize_subtitle_phrase_key(tokens)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        pairs.append((key, display_en))
+    if not pairs:
+        return {}
+
+    phrases = [en for _, en in pairs]
+    zh_by_en = asyncio.run(translate_phrases_batched(phrases))
+    merged: Dict[str, str] = {}
+    for (key, en) in pairs:
+        zh = (zh_by_en.get(en) or "").strip()
+        if zh:
+            _store_phrase_translation(merged, key, en, zh)
+    return merged
 
 
 def _store_phrase_translation(

@@ -115,6 +115,29 @@ class SubtitleSegmentTrimTests(unittest.TestCase):
         self.assertEqual(times[1][0], 1.0)
         self.assertAlmostEqual(times[1][1], 1.2)
 
+    def test_apply_segment_skips_proportional_when_disabled(self):
+        """Clip-local ASR must not be resliced when reference wording diverges (long CN clips)."""
+        words = [
+            {"text": "一二", "start": 0.0, "end": 0.2},
+            {"text": "三四", "start": 0.2, "end": 0.4},
+        ]
+        ref = "五六七八"  # different core from ASR; would trigger proportional path
+        out = video_utils.apply_segment_reference_text_to_words(
+            words, ref, allow_proportional_text_reslice=False
+        )
+        self.assertEqual([w["text"] for w in out], ["一二", "三四"])
+        self.assertEqual(out[0]["start"], 0.0)
+        self.assertEqual(out[1]["end"], 0.4)
+
+    def test_clamp_subtitle_words_caps_trailing_token(self):
+        words = [
+            {"text": "a", "start": 0.0, "end": 9.5},
+            {"text": "b", "start": 9.5, "end": 10.8},
+        ]
+        out = video_utils.clamp_subtitle_words_to_timeline(words, 10.0)
+        self.assertAlmostEqual(out[-1]["end"], 10.0)
+        self.assertGreater(out[-1]["end"], out[-1]["start"])
+
 
 if __name__ == "__main__":
     unittest.main()

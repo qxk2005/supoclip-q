@@ -102,6 +102,8 @@ interface TaskDetails {
   caption_template?: string;
   include_broll?: boolean;
   burn_clip_title_zh?: boolean;
+  clip_subtitle_rewhisper?: boolean;
+  clip_subtitle_llm_refine?: boolean;
   target_clip_count?: number | null;
   clip_theme?: string | null;
 }
@@ -145,6 +147,10 @@ export default function TaskPage() {
   const [projectAudioFadeOut, setProjectAudioFadeOut] = useState(false);
   const [projectProcessingMode, setProjectProcessingMode] = useState<'fast' | 'balanced' | 'quality'>('fast');
   const [projectBurnClipTitleZh, setProjectBurnClipTitleZh] = useState(true);
+  const [projectClipSubtitleRewhisper, setProjectClipSubtitleRewhisper] =
+    useState(true);
+  const [projectClipSubtitleLlmRefine, setProjectClipSubtitleLlmRefine] =
+    useState(true);
   const [isApplyingSettings, setIsApplyingSettings] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const [availableFonts, setAvailableFonts] = useState<FontOption[]>([]);
@@ -202,6 +208,8 @@ export default function TaskPage() {
         setProjectAudioFadeOut(Boolean(taskData.audio_fade_out));
         setProjectProcessingMode(taskData.processing_mode || "fast");
         setProjectBurnClipTitleZh(taskData.burn_clip_title_zh !== false);
+        setProjectClipSubtitleRewhisper(taskData.clip_subtitle_rewhisper !== false);
+        setProjectClipSubtitleLlmRefine(taskData.clip_subtitle_llm_refine !== false);
 
         // Fetch clips if task is completed or processing (incremental clips)
         if (taskData.status === "completed" || taskData.status === "processing") {
@@ -590,6 +598,8 @@ export default function TaskPage() {
           processing_mode: projectProcessingMode,
           apply_to_existing: applyToAllClips,
           burn_clip_title_zh: projectBurnClipTitleZh,
+          clip_subtitle_rewhisper: projectClipSubtitleRewhisper,
+          clip_subtitle_llm_refine: projectClipSubtitleLlmRefine,
         }),
       });
       if (!response.ok) {
@@ -1501,6 +1511,41 @@ export default function TaskPage() {
                   className="rounded"
                 />
                 启用音频淡出
+              </label>
+
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectClipSubtitleRewhisper}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setProjectClipSubtitleRewhisper(on);
+                    if (!on) setProjectClipSubtitleLlmRefine(false);
+                  }}
+                  className="rounded mt-0.5"
+                />
+                <span>
+                  片段级重识别字幕（faster-whisper）
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    导出前按成片截取音频重跑识别，时间轴与口播对齐；关闭则沿用整片缓存时间戳。
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectClipSubtitleLlmRefine}
+                  onChange={(e) => setProjectClipSubtitleLlmRefine(e.target.checked)}
+                  disabled={!projectClipSubtitleRewhisper}
+                  className="rounded mt-0.5"
+                />
+                <span>
+                  热词 + 大模型轻量润色（不改时间戳）
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    需配置 LLM；仅做小范围用字修正。依赖上一项「片段级重识别」。
+                  </span>
+                </span>
               </label>
             </div>
 

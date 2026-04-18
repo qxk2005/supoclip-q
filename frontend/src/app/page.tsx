@@ -25,6 +25,7 @@ import { ArrowRight, Youtube, CheckCircle, AlertCircle, Loader2, Palette, Type, 
   Languages,
   Zap,
   Volume2,
+  Subtitles,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import LandingPage from "@/components/landing-page";
@@ -96,6 +97,8 @@ const getYouTubeThumbnailUrl = (value: string): string | null => {
 
 const PREF_AUDIO_FADE_IN = "supoclip_pref_audio_fade_in";
 const PREF_AUDIO_FADE_OUT = "supoclip_pref_audio_fade_out";
+const PREF_CLIP_SUBTITLE_REWHISPER = "supoclip_pref_clip_subtitle_rewhisper";
+const PREF_CLIP_SUBTITLE_LLM_REFINE = "supoclip_pref_clip_subtitle_llm_refine";
 
 /** Aligned with backend MAX_CLIPS default (10). */
 const MAX_TARGET_CLIP_COUNT = 10;
@@ -154,6 +157,14 @@ export default function Home() {
     return localStorage.getItem(PREF_AUDIO_FADE_OUT) === "1";
   });
   const [burnClipTitleZh, setBurnClipTitleZh] = useState(true);
+  const [clipSubtitleRewhisper, setClipSubtitleRewhisper] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(PREF_CLIP_SUBTITLE_REWHISPER) !== "0";
+  });
+  const [clipSubtitleLlmRefine, setClipSubtitleLlmRefine] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(PREF_CLIP_SUBTITLE_LLM_REFINE) !== "0";
+  });
   const [targetClipCount, setTargetClipCount] = useState("5");
   const [clipTheme, setClipTheme] = useState("");
 
@@ -164,6 +175,14 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(PREF_AUDIO_FADE_OUT, audioFadeOut ? "1" : "0");
   }, [audioFadeOut]);
+
+  useEffect(() => {
+    localStorage.setItem(PREF_CLIP_SUBTITLE_REWHISPER, clipSubtitleRewhisper ? "1" : "0");
+  }, [clipSubtitleRewhisper]);
+
+  useEffect(() => {
+    localStorage.setItem(PREF_CLIP_SUBTITLE_LLM_REFINE, clipSubtitleLlmRefine ? "1" : "0");
+  }, [clipSubtitleLlmRefine]);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -607,6 +626,8 @@ export default function Home() {
           audio_fade_in: audioFadeIn,
           audio_fade_out: audioFadeOut,
           burn_clip_title_zh: burnClipTitleZh,
+          clip_subtitle_rewhisper: clipSubtitleRewhisper,
+          clip_subtitle_llm_refine: clipSubtitleLlmRefine,
           target_clip_count: Math.min(
             MAX_TARGET_CLIP_COUNT,
             Math.max(1, Number.parseInt(targetClipCount, 10) || 5),
@@ -1268,6 +1289,7 @@ export default function Home() {
                   </div>
 
                   {addSubtitles && (
+                    <>
                     <div className="flex flex-col gap-2 p-3 border rounded-lg bg-stone-50 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-3 min-w-0">
                         <Languages className="w-4 h-4 text-sky-600 shrink-0" />
@@ -1295,6 +1317,41 @@ export default function Home() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
+                      <div className="flex items-center gap-3">
+                        <Subtitles className="w-4 h-4 text-violet-600" />
+                        <div>
+                          <h3 className="text-sm font-medium text-stone-900">片段级重识别字幕</h3>
+                          <p className="text-xs text-stone-500">
+                            按成片时间轴截取音频后用 faster-whisper 重跑，时间戳与导出片段对齐（推荐开启）
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={clipSubtitleRewhisper}
+                        onCheckedChange={setClipSubtitleRewhisper}
+                        disabled={isLoading}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
+                      <div className="flex items-center gap-3">
+                        <Sparkles className="w-4 h-4 text-violet-600" />
+                        <div>
+                          <h3 className="text-sm font-medium text-stone-900">热词 + 大模型轻量润色</h3>
+                          <p className="text-xs text-stone-500">
+                            在保留 Whisper 时间戳的前提下，用语境与热词做小范围用字修正（需配置 LLM）
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={clipSubtitleLlmRefine}
+                        onCheckedChange={setClipSubtitleLlmRefine}
+                        disabled={isLoading || !clipSubtitleRewhisper}
+                      />
+                    </div>
+                    </>
                   )}
 
                   <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">

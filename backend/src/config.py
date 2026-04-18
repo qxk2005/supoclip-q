@@ -86,6 +86,10 @@ class Config:
         self.quality_mode_transcript_model = os.getenv(
             "QUALITY_MODE_TRANSCRIPT_MODEL", "large-v3"
         )
+        # Clip export: re-run faster-whisper on the exact segment audio so subtitle times match the cut.
+        self.clip_subtitle_rewhisper = self._get_bool_env("CLIP_SUBTITLE_REWHISPER", True)
+        # Optional LLM pass: glossary/hotword-aware token patches only (timestamps unchanged).
+        self.clip_subtitle_llm_refine = self._get_bool_env("CLIP_SUBTITLE_LLM_REFINE", True)
 
     @staticmethod
     def _get_optional_env(name: str):

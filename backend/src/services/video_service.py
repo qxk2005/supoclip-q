@@ -186,6 +186,9 @@ class VideoService:
         processing_mode: str = "fast",
         bilingual_subtitles: bool = False,
         burn_clip_title_zh: bool = True,
+        professional_hotwords: Optional[str] = None,
+        clip_subtitle_rewhisper: Optional[bool] = None,
+        clip_subtitle_llm_refine: Optional[bool] = None,
     ) -> List[Dict[str, Any]]:
         """
         Create standalone video clips from segments with optional subtitles.
@@ -216,6 +219,9 @@ class VideoService:
             processing_mode,
             bilingual_subtitles,
             burn_clip_title_zh,
+            professional_hotwords,
+            clip_subtitle_rewhisper,
+            clip_subtitle_llm_refine,
         )
 
         logger.info(f"Successfully created {len(clips_info)} clips")
@@ -238,6 +244,9 @@ class VideoService:
         processing_mode: str = "fast",
         bilingual_subtitles: bool = False,
         burn_clip_title_zh: bool = True,
+        professional_hotwords: Optional[str] = None,
+        clip_subtitle_rewhisper: Optional[bool] = None,
+        clip_subtitle_llm_refine: Optional[bool] = None,
     ) -> Optional[Dict[str, Any]]:
         """Render a single clip in the thread pool and return clip_info dict, or None on failure."""
         try:
@@ -281,6 +290,9 @@ class VideoService:
                 title_zh,
                 golden_q,
                 burn_clip_title_zh,
+                professional_hotwords,
+                clip_subtitle_rewhisper,
+                clip_subtitle_llm_refine,
             )
 
             if not success:

@@ -8,6 +8,8 @@ from typing import List, Dict, Any, Tuple, Optional
 import os
 import re
 import logging
+import subprocess
+import tempfile
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -23,10 +25,17 @@ from datetime import timedelta
 from .config import Config
 from .caption_templates import get_template, CAPTION_TEMPLATES
 from .font_registry import find_font_path
+from .subtitle_translation import (
+    refine_whisper_words_with_glossary_sync,
+    build_clip_bilingual_phrase_translations_sync,
+)
 
 logger = logging.getLogger(__name__)
 config = Config()
 TRANSCRIPT_CACHE_SCHEMA_VERSION = 2
+
+# One WhisperModel per resolved size (clip-level re-transcription reuses the same instance).
+_whisper_model_cache: Dict[str, WhisperModel] = {}
 
 # Names accepted by faster-whisper's download_model (see faster_whisper.utils).
 _WHISPER_MODEL_SIZES = frozenset(
@@ -235,6 +244,112 @@ def load_cached_transcript_data(video_path: Path) -> Optional[Dict]:
     except Exception as e:
         logger.warning(f"Failed to load transcript cache: {e}")
         return None
+
+
+def _speech_model_for_processing_mode(processing_mode: str) -> str:
+    mode = (processing_mode or "fast").strip().lower()
+    if mode == "balanced":
+        return config.balanced_mode_transcript_model
+    if mode == "quality":
+        return config.quality_mode_transcript_model
+    if mode == "fast":
+        return config.fast_mode_transcript_model
+    return config.whisper_model
+
+
+def _get_cached_whisper_model(resolved_size: str) -> WhisperModel:
+    if resolved_size not in _whisper_model_cache:
+        _whisper_model_cache[resolved_size] = WhisperModel(
+            resolved_size, device="cpu", compute_type="int8"
+        )
+    return _whisper_model_cache[resolved_size]
+
+
+def extract_clip_audio_wav_ffmpeg(
+    video_path: Path,
+    start_s: float,
+    duration_s: float,
+    out_wav: Path,
+) -> bool:
+    """Extract mono 16 kHz PCM WAV for a [start_s, start_s+duration_s) window (accurate seek after -i)."""
+    if duration_s <= 0:
+        return False
+    try:
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(video_path),
+            "-ss",
+            f"{max(0.0, float(start_s)):.6f}",
+            "-t",
+            f"{float(duration_s):.6f}",
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            str(out_wav),
+        ]
+        r = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=900,
+        )
+        if r.returncode != 0:
+            logger.warning(
+                "ffmpeg clip-audio extract failed (rc=%s): %s",
+                r.returncode,
+                (r.stderr or "")[:800],
+            )
+            return False
+        return out_wav.exists() and out_wav.stat().st_size > 0
+    except Exception as e:
+        logger.warning("ffmpeg clip-audio extract error: %s", e)
+        return False
+
+
+def transcribe_clip_audio_to_subtitle_words(
+    audio_wav: Path,
+    speech_model: str,
+    initial_prompt: Optional[str] = None,
+    language: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Run faster-whisper on clip-local WAV (timestamps 0..duration) and return word dicts
+    for subtitle rendering: text, start, end, confidence.
+    """
+    resolved = resolve_whisper_model_size(speech_model)
+    model = _get_cached_whisper_model(resolved)
+    transcribe_kw: Dict[str, Any] = {"word_timestamps": True}
+    if initial_prompt and initial_prompt.strip():
+        transcribe_kw["initial_prompt"] = initial_prompt.strip()[:2000]
+    lang = (language or "").strip().lower() if language else ""
+    if lang and lang not in {"auto", "unknown"}:
+        transcribe_kw["language"] = lang[:8]
+    segments, _info = model.transcribe(str(audio_wav), **transcribe_kw)
+    words_out: List[Dict[str, Any]] = []
+    for seg in segments:
+        seg_words = getattr(seg, "words", None) or []
+        for word in seg_words:
+            wtxt = (getattr(word, "word", None) or "").strip()
+            if not wtxt:
+                continue
+            words_out.append(
+                {
+                    "text": wtxt,
+                    "start": float(word.start),
+                    "end": float(word.end),
+                    "confidence": float(getattr(word, "probability", None) or 1.0),
+                }
+            )
+    return words_out
 
 
 def format_ms_to_timestamp(ms: int) -> str:
@@ -659,6 +774,39 @@ def parse_timestamp_to_seconds(timestamp_str: str) -> float:
         logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
         return 0.0
 
+def clamp_subtitle_words_to_timeline(
+    words: List[Dict[str, Any]],
+    timeline_end: float,
+) -> List[Dict[str, Any]]:
+    """
+    Clamp each token's start/end into [0, timeline_end].
+
+    Clip-local Whisper can emit a final token end slightly past the muxed audio
+    duration; without clamping, last subtitle cards extend past the composite and
+    feel out of sync on long exports.
+    """
+    if not words or timeline_end <= 0:
+        return words
+    te = float(timeline_end)
+    out: List[Dict[str, Any]] = []
+    for w in words:
+        nw = dict(w)
+        try:
+            s = float(nw.get("start", 0.0))
+            e = float(nw.get("end", 0.0))
+        except (TypeError, ValueError):
+            out.append(nw)
+            continue
+        s = max(0.0, min(s, te))
+        e = max(0.0, min(e, te))
+        if e <= s:
+            e = min(te, s + 0.04)
+        nw["start"] = s
+        nw["end"] = e
+        out.append(nw)
+    return out
+
+
 def get_words_in_range(
     transcript_data: Dict,
     clip_start: float,
@@ -889,6 +1037,8 @@ def _distribute_ref_to_words_punctuation_aligned(
 def apply_segment_reference_text_to_words(
     words: List[Dict],
     reference_text: Optional[str],
+    *,
+    allow_proportional_text_reslice: bool = True,
 ) -> List[Dict]:
     """
     Replace per-token subtitle strings with slices of *reference_text* (AI segment text,
@@ -897,6 +1047,11 @@ def apply_segment_reference_text_to_words(
     Burned subtitles otherwise use only ASR ``word`` strings — including for pure
     Chinese, English, and mixed industry copy — so corrected ``segment['text']``
     would not appear on screen without this step.
+
+    When *allow_proportional_text_reslice* is False (recommended after clip-local
+    re-whisper), we never assign reference characters proportionally across tokens:
+    that path keeps timestamps but destroys acoustic alignment whenever the
+    reference wording differs from the clip ASR (common on long Chinese clips).
     """
     if not words:
         return words
@@ -915,6 +1070,13 @@ def apply_segment_reference_text_to_words(
         merged = _distribute_ref_to_words_punctuation_aligned(words, ref)
         if merged is not None:
             return merged
+
+    if not allow_proportional_text_reslice:
+        logger.info(
+            "Preserving clip-local ASR token text (skip proportional segment.text overlay); "
+            "reference differs from ASR core or punctuation-only merge unavailable."
+        )
+        return words
 
     weights = [
         max(1, len(_subtitle_chars_no_whitespace(w.get("text") or "")))
@@ -1565,13 +1727,16 @@ def create_faster_whisper_subtitles(
     caption_template: str = "default",
     bilingual_subtitles: bool = False,
     subtitle_segment_text: Optional[str] = None,
+    clip_timeline_words: Optional[List[Dict[str, Any]]] = None,
+    phrase_translations_override: Optional[Dict[str, str]] = None,
 ) -> List[TextClip]:
-    """Create subtitles using faster-whisper's precise word timing with template support."""
-    transcript_data = load_cached_transcript_data(video_path)
-
-    if not transcript_data or not transcript_data.get("segments"):
-        logger.warning("No cached transcript data available for subtitles")
-        return []
+    """Create subtitles using faster-whisper word timings (cache or clip-local ASR)."""
+    transcript_data: Optional[Dict[str, Any]] = None
+    if clip_timeline_words is None:
+        transcript_data = load_cached_transcript_data(video_path)
+        if not transcript_data or not transcript_data.get("segments"):
+            logger.warning("No cached transcript data available for subtitles")
+            return []
 
     # Get template settings
     template = get_template(caption_template)
@@ -1592,18 +1757,25 @@ def create_faster_whisper_subtitles(
     )
     logger.info(f"Effective font: {effective_font_family}, size: {effective_font_size}, color: {effective_font_color}")
 
-    # Get words in range, then trim to AI segment wording (drops edge-only ASR tokens).
-    relevant_words = get_words_in_range(transcript_data, clip_start, clip_end)
-    relevant_words = trim_subtitle_words_to_segment_text(
-        relevant_words, subtitle_segment_text
-    )
-
-    if subtitle_segment_text and relevant_words and not bilingual_subtitles:
-        # Keep Whisper per-token start/end for timing; do not redistribute by character
-        # averages (that drifts away from when each phrase actually begins).
-        relevant_words = apply_segment_reference_text_to_words(
+    if clip_timeline_words is not None:
+        relevant_words = list(clip_timeline_words)
+    else:
+        assert transcript_data is not None
+        # Get words in range, then trim to AI segment wording (drops edge-only ASR tokens).
+        relevant_words = get_words_in_range(transcript_data, clip_start, clip_end)
+        relevant_words = trim_subtitle_words_to_segment_text(
             relevant_words, subtitle_segment_text
         )
+
+    if subtitle_segment_text and relevant_words and not bilingual_subtitles:
+        # Clip-local ASR is already merged in create_optimized_clip (acoustic-safe).
+        # Re-applying segment.text here would repeat work and could confuse punctuation passes.
+        if clip_timeline_words is None:
+            # Keep Whisper per-token start/end for timing; do not redistribute by character
+            # averages (that drifts away from when each phrase actually begins).
+            relevant_words = apply_segment_reference_text_to_words(
+                relevant_words, subtitle_segment_text
+            )
 
     if not relevant_words:
         logger.warning("No words found in clip timerange")
@@ -1613,9 +1785,9 @@ def create_faster_whisper_subtitles(
     clip_span = max(0.0, float(clip_end - clip_start))
 
     if bilingual_subtitles:
-        phrase_map: Dict[str, str] = dict(
-            transcript_data.get("phrase_translations") or {}
-        )
+        phrase_map: Dict[str, str] = dict(phrase_translations_override or {})
+        if not phrase_map and transcript_data is not None:
+            phrase_map = dict(transcript_data.get("phrase_translations") or {})
         # English secondary: two points smaller than the previous (-2) offset.
         secondary_size = max(8, effective_font_size - 4)
         return create_bilingual_static_subtitles(
@@ -2422,6 +2594,9 @@ def create_optimized_clip(
     clip_title_zh: Optional[str] = None,
     clip_golden_quote_zh: Optional[str] = None,
     burn_clip_title_zh: bool = True,
+    professional_hotwords: Optional[str] = None,
+    clip_subtitle_rewhisper: Optional[bool] = None,
+    clip_subtitle_llm_refine: Optional[bool] = None,
 ) -> bool:
     """Create clip with optional subtitles and audio fades."""
     try:
@@ -2517,6 +2692,15 @@ def create_optimized_clip(
                 f"Applied audio fades (fade_s={fade_s:.2f}s fade_in={audio_fade_in} fade_out={audio_fade_out})"
             )
 
+        pdur = float(getattr(processed_clip, "duration", 0.0) or 0.0)
+        if duration > 0 and pdur > duration + 0.05:
+            processed_clip = processed_clip.subclipped(0, duration)
+            logger.info(
+                "Trimmed processed clip to segment duration=%.3fs (source subclip was %.3fs) for A/V sync",
+                duration,
+                pdur,
+            )
+
         # Composite order: base → golden quote (upper safe band) → subtitles (top layer)
         final_clips = [processed_clip]
 
@@ -2533,6 +2717,97 @@ def create_optimized_clip(
                     "Added %s golden-quote overlay layer(s)", len(g_layers)
                 )
 
+        clip_timeline_words: Optional[List[Dict[str, Any]]] = None
+        phrase_override: Optional[Dict[str, str]] = None
+        use_clip_rewhisper = (
+            config.clip_subtitle_rewhisper
+            if clip_subtitle_rewhisper is None
+            else bool(clip_subtitle_rewhisper)
+        )
+        if add_subtitles and use_clip_rewhisper:
+            wav_path: Optional[Path] = None
+            try:
+                _fd, wav_str = tempfile.mkstemp(suffix=".wav")
+                os.close(_fd)
+                wav_path = Path(wav_str)
+                if extract_clip_audio_wav_ffmpeg(
+                    video_path, start_time, duration, wav_path
+                ):
+                    speech_model = _speech_model_for_processing_mode(processing_mode)
+                    td0 = load_cached_transcript_data(video_path) or {}
+                    raw_lang = td0.get("language")
+                    lang_hint: Optional[str] = None
+                    if isinstance(raw_lang, str) and raw_lang.strip():
+                        low = raw_lang.strip().lower()
+                        if low not in {"auto", "unknown"}:
+                            lang_hint = low[:8]
+                    whisper_prompt: Optional[str] = None
+                    if professional_hotwords and professional_hotwords.strip():
+                        whisper_prompt = (
+                            professional_hotwords.replace("\n", ", ").strip()[:2000]
+                        )
+                    clip_timeline_words = transcribe_clip_audio_to_subtitle_words(
+                        wav_path,
+                        speech_model,
+                        whisper_prompt,
+                        language=lang_hint,
+                    )
+                    # Do not trim to AI segment.text here: that text comes from the full-video
+                    # transcript pass and often fails subsequence alignment on long pure-Chinese
+                    # clips, dropping real speech at the edges and causing perceived A/V desync.
+                    clip_timeline_words = refine_whisper_words_with_glossary_sync(
+                        clip_timeline_words,
+                        professional_hotwords,
+                        subtitle_segment_text,
+                        llm_refine_enabled=clip_subtitle_llm_refine,
+                    )
+                    clip_timeline_words = clamp_subtitle_words_to_timeline(
+                        clip_timeline_words, duration
+                    )
+                    if bilingual_subtitles and clip_timeline_words:
+                        try:
+                            phrase_override = (
+                                build_clip_bilingual_phrase_translations_sync(
+                                    clip_timeline_words
+                                )
+                            )
+                        except Exception as be:
+                            logger.warning(
+                                "Clip bilingual phrase translations failed: %s", be
+                            )
+                            phrase_override = None
+                    if (
+                        not bilingual_subtitles
+                        and subtitle_segment_text
+                        and clip_timeline_words
+                    ):
+                        clip_timeline_words = apply_segment_reference_text_to_words(
+                            clip_timeline_words,
+                            subtitle_segment_text,
+                            allow_proportional_text_reslice=False,
+                        )
+                else:
+                    clip_timeline_words = None
+            except Exception as e:
+                logger.warning(
+                    "Clip-level re-whisper failed, using full-video cache: %s", e
+                )
+                clip_timeline_words = None
+                phrase_override = None
+            finally:
+                if wav_path is not None:
+                    try:
+                        wav_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+
+        if clip_timeline_words is not None and not clip_timeline_words:
+            logger.warning(
+                "Clip re-whisper returned no words; falling back to cached transcript window"
+            )
+            clip_timeline_words = None
+            phrase_override = None
+
         if add_subtitles:
             logger.info(f"Creating subtitles for clip with template: {caption_template}")
             subtitle_clips = create_faster_whisper_subtitles(
@@ -2547,6 +2822,8 @@ def create_optimized_clip(
                 caption_template,
                 bilingual_subtitles=bilingual_subtitles,
                 subtitle_segment_text=subtitle_segment_text,
+                clip_timeline_words=clip_timeline_words,
+                phrase_translations_override=phrase_override,
             )
             logger.info(f"Found {len(subtitle_clips)} subtitle clips to add.")
             final_clips.extend(subtitle_clips)
@@ -2611,6 +2888,9 @@ def create_clips_from_segments(
     processing_mode: str = "fast",
     bilingual_subtitles: bool = False,
     burn_clip_title_zh: bool = True,
+    professional_hotwords: Optional[str] = None,
+    clip_subtitle_rewhisper: Optional[bool] = None,
+    clip_subtitle_llm_refine: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments with template support."""
     logger.info(
@@ -2664,6 +2944,9 @@ def create_clips_from_segments(
                 (segment.get("title_zh") or "").strip() or None,
                 (segment.get("golden_quote_zh") or "").strip() or None,
                 burn_clip_title_zh,
+                professional_hotwords,
+                clip_subtitle_rewhisper,
+                clip_subtitle_llm_refine,
             )
 
             if success:
@@ -2828,6 +3111,9 @@ def create_clips_with_transitions(
     processing_mode: str = "fast",
     bilingual_subtitles: bool = False,
     burn_clip_title_zh: bool = True,
+    professional_hotwords: Optional[str] = None,
+    clip_subtitle_rewhisper: Optional[bool] = None,
+    clip_subtitle_llm_refine: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """Create standalone video clips without inter-clip transitions.
 
@@ -2854,6 +3140,9 @@ def create_clips_with_transitions(
         processing_mode,
         bilingual_subtitles,
         burn_clip_title_zh,
+        professional_hotwords,
+        clip_subtitle_rewhisper,
+        clip_subtitle_llm_refine,
     )
 
 
