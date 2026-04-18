@@ -90,6 +90,11 @@ class Config:
         self.clip_subtitle_rewhisper = self._get_bool_env("CLIP_SUBTITLE_REWHISPER", True)
         # Optional LLM pass: glossary/hotword-aware token patches only (timestamps unchanged).
         self.clip_subtitle_llm_refine = self._get_bool_env("CLIP_SUBTITLE_LLM_REFINE", True)
+        # CJK clip subtitles: merge Whisper tokens into weighted lines, optional LLM punctuation polish (static template).
+        self.clip_zh_subtitle_polish = self._get_bool_env("CLIP_ZH_SUBTITLE_POLISH", True)
+        self.clip_zh_subtitle_polish_llm = self._get_bool_env(
+            "CLIP_ZH_SUBTITLE_POLISH_LLM", True
+        )
 
     @staticmethod
     def _get_optional_env(name: str):

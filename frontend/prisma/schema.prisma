@@ -67,6 +67,7 @@ model Task {
   burn_clip_title_zh                Boolean      @default(true)
   clip_subtitle_rewhisper           Boolean      @default(true)
   clip_subtitle_llm_refine          Boolean      @default(true)
+  clip_zh_subtitle_polish           Boolean      @default(true)
   target_clip_count                 Int?
   clip_theme                        String?      @db.Text
 

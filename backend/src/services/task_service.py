@@ -117,6 +117,7 @@ class TaskService:
         clip_theme: Optional[str] = None,
         clip_subtitle_rewhisper: bool = True,
         clip_subtitle_llm_refine: bool = True,
+        clip_zh_subtitle_polish: bool = True,
     ) -> str:
         """
         Create a new task with associated source.
@@ -164,6 +165,7 @@ class TaskService:
             clip_theme=clip_theme,
             clip_subtitle_rewhisper=clip_subtitle_rewhisper,
             clip_subtitle_llm_refine=clip_subtitle_llm_refine,
+            clip_zh_subtitle_polish=clip_zh_subtitle_polish,
         )
 
         logger.info(f"Created task {task_id} for user {user_id}")
@@ -401,6 +403,11 @@ class TaskService:
                     )
                     if td_refresh
                     else bool(task_details.get("clip_subtitle_llm_refine", True)),
+                    clip_zh_subtitle_polish=bool(
+                        td_refresh.get("clip_zh_subtitle_polish", True)
+                    )
+                    if td_refresh
+                    else bool(task_details.get("clip_zh_subtitle_polish", True)),
                 )
                 if clip_info is None:
                     continue  # Skip failed clip
@@ -641,6 +648,7 @@ class TaskService:
         burn_clip_title_zh: bool = True,
         clip_subtitle_rewhisper: bool = True,
         clip_subtitle_llm_refine: bool = True,
+        clip_zh_subtitle_polish: bool = True,
     ) -> Dict[str, Any]:
         """Update task-level settings and optionally regenerate all clips."""
         await self.task_repo.update_task_settings(
@@ -657,6 +665,7 @@ class TaskService:
             burn_clip_title_zh=burn_clip_title_zh,
             clip_subtitle_rewhisper=clip_subtitle_rewhisper,
             clip_subtitle_llm_refine=clip_subtitle_llm_refine,
+            clip_zh_subtitle_polish=clip_zh_subtitle_polish,
         )
 
         if apply_to_existing:
@@ -808,6 +817,7 @@ class TaskService:
             professional_hotwords=hotwords,
             clip_subtitle_rewhisper=bool(task.get("clip_subtitle_rewhisper", True)),
             clip_subtitle_llm_refine=bool(task.get("clip_subtitle_llm_refine", True)),
+            clip_zh_subtitle_polish=bool(task.get("clip_zh_subtitle_polish", True)),
         )
 
         await self.clip_repo.delete_clips_by_task(self.db, task_id)

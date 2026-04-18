@@ -214,6 +214,9 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
     clip_subtitle_llm_refine = _coerce_bool(
         data.get("clip_subtitle_llm_refine", True), True
     )
+    clip_zh_subtitle_polish = _coerce_bool(
+        data.get("clip_zh_subtitle_polish", True), True
+    )
     if not raw_source or not raw_source.get("url"):
         raise HTTPException(status_code=400, detail="Source URL is required")
 
@@ -245,6 +248,7 @@ async def create_task(request: Request, db: AsyncSession = Depends(get_db)):
             clip_theme=clip_theme,
             clip_subtitle_rewhisper=clip_subtitle_rewhisper,
             clip_subtitle_llm_refine=clip_subtitle_llm_refine,
+            clip_zh_subtitle_polish=clip_zh_subtitle_polish,
         )
 
         # Get source type for worker
@@ -708,6 +712,7 @@ class TaskSettingsUpdate(BaseModel):
     burn_clip_title_zh: bool = True
     clip_subtitle_rewhisper: bool = True
     clip_subtitle_llm_refine: bool = True
+    clip_zh_subtitle_polish: bool = True
 
     @field_validator(
         "include_broll",
@@ -717,6 +722,7 @@ class TaskSettingsUpdate(BaseModel):
         "burn_clip_title_zh",
         "clip_subtitle_rewhisper",
         "clip_subtitle_llm_refine",
+        "clip_zh_subtitle_polish",
         mode="before",
     )
     @classmethod
@@ -755,6 +761,7 @@ async def apply_task_settings(
             burn_clip_title_zh=settings.burn_clip_title_zh,
             clip_subtitle_rewhisper=settings.clip_subtitle_rewhisper,
             clip_subtitle_llm_refine=settings.clip_subtitle_llm_refine,
+            clip_zh_subtitle_polish=settings.clip_zh_subtitle_polish,
         )
         return {"task": task, "message": "Task settings updated"}
     except ValueError as e:

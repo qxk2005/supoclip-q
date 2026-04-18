@@ -39,6 +39,7 @@ class TaskRepository:
         clip_theme: Optional[str] = None,
         clip_subtitle_rewhisper: bool = True,
         clip_subtitle_llm_refine: bool = True,
+        clip_zh_subtitle_polish: bool = True,
     ) -> str:
         """Create a new task and return its ID."""
         task_id = str(uuid4())
@@ -52,6 +53,7 @@ class TaskRepository:
                         bilingual_subtitles_mode, burn_clip_title_zh,
                         target_clip_count, clip_theme,
                         clip_subtitle_rewhisper, clip_subtitle_llm_refine,
+                        clip_zh_subtitle_polish,
                         created_at, updated_at
                     )
                     VALUES (
@@ -61,6 +63,7 @@ class TaskRepository:
                         :bilingual_subtitles_mode, :burn_clip_title_zh,
                         :target_clip_count, :clip_theme,
                         :clip_subtitle_rewhisper, :clip_subtitle_llm_refine,
+                        :clip_zh_subtitle_polish,
                         NOW(), NOW()
                     )
                     RETURNING id
@@ -87,6 +90,7 @@ class TaskRepository:
                     "clip_theme": clip_theme,
                     "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
                     "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
+                    "clip_zh_subtitle_polish": clip_zh_subtitle_polish,
                 },
             )
         except Exception as first_err:
@@ -124,6 +128,25 @@ class TaskRepository:
             raise RuntimeError("Failed to create task: no ID returned")
 
         # Minimal INSERT omits extended columns; keep DB in sync with API (audio fade, etc.).
+        # `clip_zh_subtitle_polish` may be missing on DBs that have not run migration 20260418_0003;
+        # persist core fields first, then best-effort set zh polish flag in a separate UPDATE.
+        ext_params = {
+            "task_id": task_id,
+            "caption_template": caption_template,
+            "include_broll": include_broll,
+            "processing_mode": processing_mode,
+            "chunk_size": chunk_size,
+            "language": language,
+            "audio_fade_in": audio_fade_in,
+            "audio_fade_out": audio_fade_out,
+            "professional_hotwords": professional_hotwords,
+            "bilingual_subtitles_mode": bilingual_subtitles_mode,
+            "burn_clip_title_zh": burn_clip_title_zh,
+            "target_clip_count": target_clip_count,
+            "clip_theme": clip_theme,
+            "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
+            "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
+        }
         try:
             await db.execute(
                 text(
@@ -147,24 +170,29 @@ class TaskRepository:
                     WHERE id = :task_id
                     """
                 ),
-                {
-                    "task_id": task_id,
-                    "caption_template": caption_template,
-                    "include_broll": include_broll,
-                    "processing_mode": processing_mode,
-                    "chunk_size": chunk_size,
-                    "language": language,
-                    "audio_fade_in": audio_fade_in,
-                    "audio_fade_out": audio_fade_out,
-                    "professional_hotwords": professional_hotwords,
-                    "bilingual_subtitles_mode": bilingual_subtitles_mode,
-                    "burn_clip_title_zh": burn_clip_title_zh,
-                    "target_clip_count": target_clip_count,
-                    "clip_theme": clip_theme,
-                    "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
-                    "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
-                },
+                ext_params,
             )
+            try:
+                await db.execute(
+                    text(
+                        """
+                        UPDATE tasks
+                        SET clip_zh_subtitle_polish = :clip_zh_subtitle_polish,
+                            updated_at = NOW()
+                        WHERE id = :task_id
+                        """
+                    ),
+                    {
+                        "task_id": task_id,
+                        "clip_zh_subtitle_polish": clip_zh_subtitle_polish,
+                    },
+                )
+            except Exception as zh_err:
+                logger.warning(
+                    "Could not set clip_zh_subtitle_polish for task %s (run migration 20260418_0003?): %s",
+                    task_id,
+                    zh_err,
+                )
             await db.commit()
         except Exception as ext_err:
             logger.warning(
@@ -232,6 +260,9 @@ class TaskRepository:
             ),
             "clip_subtitle_llm_refine": bool(
                 getattr(row, "clip_subtitle_llm_refine", True)
+            ),
+            "clip_zh_subtitle_polish": bool(
+                getattr(row, "clip_zh_subtitle_polish", True)
             ),
             "cache_hit": getattr(row, "cache_hit", False),
             "error_code": getattr(row, "error_code", None),
@@ -340,8 +371,23 @@ class TaskRepository:
         burn_clip_title_zh: bool = True,
         clip_subtitle_rewhisper: bool = True,
         clip_subtitle_llm_refine: bool = True,
+        clip_zh_subtitle_polish: bool = True,
     ) -> None:
         """Update task styling and processing settings."""
+        core_params = {
+            "task_id": task_id,
+            "font_family": font_family,
+            "font_size": font_size,
+            "font_color": font_color,
+            "caption_template": caption_template,
+            "include_broll": include_broll,
+            "audio_fade_in": audio_fade_in,
+            "audio_fade_out": audio_fade_out,
+            "processing_mode": processing_mode,
+            "burn_clip_title_zh": burn_clip_title_zh,
+            "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
+            "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
+        }
         try:
             await db.execute(
                 text(
@@ -362,21 +408,29 @@ class TaskRepository:
                     WHERE id = :task_id
                     """
                 ),
-                {
-                    "task_id": task_id,
-                    "font_family": font_family,
-                    "font_size": font_size,
-                    "font_color": font_color,
-                    "caption_template": caption_template,
-                    "include_broll": include_broll,
-                    "audio_fade_in": audio_fade_in,
-                    "audio_fade_out": audio_fade_out,
-                    "processing_mode": processing_mode,
-                    "burn_clip_title_zh": burn_clip_title_zh,
-                    "clip_subtitle_rewhisper": clip_subtitle_rewhisper,
-                    "clip_subtitle_llm_refine": clip_subtitle_llm_refine,
-                },
+                core_params,
             )
+            try:
+                await db.execute(
+                    text(
+                        """
+                        UPDATE tasks
+                        SET clip_zh_subtitle_polish = :clip_zh_subtitle_polish,
+                            updated_at = NOW()
+                        WHERE id = :task_id
+                        """
+                    ),
+                    {
+                        "task_id": task_id,
+                        "clip_zh_subtitle_polish": clip_zh_subtitle_polish,
+                    },
+                )
+            except Exception as zh_err:
+                logger.warning(
+                    "Could not update clip_zh_subtitle_polish for task %s: %s",
+                    task_id,
+                    zh_err,
+                )
         except Exception:
             await db.rollback()
             await db.execute(

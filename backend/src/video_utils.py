@@ -28,6 +28,7 @@ from .font_registry import find_font_path
 from .subtitle_translation import (
     refine_whisper_words_with_glossary_sync,
     build_clip_bilingual_phrase_translations_sync,
+    polish_zh_clip_subtitles_for_burn_sync,
 )
 
 logger = logging.getLogger(__name__)
@@ -1729,6 +1730,9 @@ def create_faster_whisper_subtitles(
     subtitle_segment_text: Optional[str] = None,
     clip_timeline_words: Optional[List[Dict[str, Any]]] = None,
     phrase_translations_override: Optional[Dict[str, str]] = None,
+    professional_hotwords: Optional[str] = None,
+    clip_subtitle_llm_refine: Optional[bool] = None,
+    clip_zh_subtitle_polish: Optional[bool] = None,
 ) -> List[TextClip]:
     """Create subtitles using faster-whisper word timings (cache or clip-local ASR)."""
     transcript_data: Optional[Dict[str, Any]] = None
@@ -1781,6 +1785,42 @@ def create_faster_whisper_subtitles(
         logger.warning("No words found in clip timerange")
         return []
     logger.info(f"Found {len(relevant_words)} relevant words for subtitles.")
+
+    polish_pref = (
+        clip_zh_subtitle_polish
+        if clip_zh_subtitle_polish is not None
+        else getattr(config, "clip_zh_subtitle_polish", True)
+    )
+    presized_cjk_lines = False
+    if (
+        polish_pref
+        and not bilingual_subtitles
+        and animation_type == "none"
+        and relevant_words
+    ):
+        llm_ref = (
+            clip_subtitle_llm_refine
+            if clip_subtitle_llm_refine is not None
+            else getattr(config, "clip_subtitle_llm_refine", True)
+        )
+        use_line_llm = bool(
+            llm_ref and getattr(config, "clip_zh_subtitle_polish_llm", True)
+        )
+        try:
+            relevant_words, presized_cjk_lines = polish_zh_clip_subtitles_for_burn_sync(
+                relevant_words,
+                hotwords=professional_hotwords,
+                use_llm=use_line_llm,
+            )
+            if presized_cjk_lines:
+                logger.info(
+                    "CJK clip subtitles: using weighted line merge + polish "
+                    "(presized cards=%s, line_llm=%s)",
+                    len(relevant_words),
+                    use_line_llm,
+                )
+        except Exception as e:
+            logger.warning("CJK clip subtitle polish skipped: %s", e)
 
     clip_span = max(0.0, float(clip_end - clip_start))
 
@@ -1839,6 +1879,7 @@ def create_faster_whisper_subtitles(
             effective_template,
             effective_font_family,
             clip_timeline_end=clip_span,
+            presized_cjk_lines=presized_cjk_lines,
         )
 
 def _resolve_static_card_time_ranges(
@@ -1882,6 +1923,7 @@ def create_static_subtitles(
     template: Dict,
     font_family: str,
     clip_timeline_end: Optional[float] = None,
+    presized_cjk_lines: bool = False,
 ) -> List[TextClip]:
     """Create standard static subtitles (original behavior)."""
     subtitle_clips = []
@@ -1901,7 +1943,9 @@ def create_static_subtitles(
 
     cjk_primary = _words_are_primarily_cjk(relevant_words)
     stroke_for_layout = int(template.get("stroke_width", 1))
-    if cjk_primary:
+    if presized_cjk_lines and cjk_primary:
+        word_groups = [[w] for w in relevant_words if w]
+    elif cjk_primary:
         word_groups = group_words_for_cjk_caption_cards(
             relevant_words,
             max_text_width,
@@ -2597,6 +2641,7 @@ def create_optimized_clip(
     professional_hotwords: Optional[str] = None,
     clip_subtitle_rewhisper: Optional[bool] = None,
     clip_subtitle_llm_refine: Optional[bool] = None,
+    clip_zh_subtitle_polish: Optional[bool] = None,
 ) -> bool:
     """Create clip with optional subtitles and audio fades."""
     try:
@@ -2824,6 +2869,9 @@ def create_optimized_clip(
                 subtitle_segment_text=subtitle_segment_text,
                 clip_timeline_words=clip_timeline_words,
                 phrase_translations_override=phrase_override,
+                professional_hotwords=professional_hotwords,
+                clip_subtitle_llm_refine=clip_subtitle_llm_refine,
+                clip_zh_subtitle_polish=clip_zh_subtitle_polish,
             )
             logger.info(f"Found {len(subtitle_clips)} subtitle clips to add.")
             final_clips.extend(subtitle_clips)
@@ -2891,6 +2939,7 @@ def create_clips_from_segments(
     professional_hotwords: Optional[str] = None,
     clip_subtitle_rewhisper: Optional[bool] = None,
     clip_subtitle_llm_refine: Optional[bool] = None,
+    clip_zh_subtitle_polish: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """Create optimized video clips from segments with template support."""
     logger.info(
@@ -2947,6 +2996,7 @@ def create_clips_from_segments(
                 professional_hotwords,
                 clip_subtitle_rewhisper,
                 clip_subtitle_llm_refine,
+                clip_zh_subtitle_polish,
             )
 
             if success:
@@ -3114,6 +3164,7 @@ def create_clips_with_transitions(
     professional_hotwords: Optional[str] = None,
     clip_subtitle_rewhisper: Optional[bool] = None,
     clip_subtitle_llm_refine: Optional[bool] = None,
+    clip_zh_subtitle_polish: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """Create standalone video clips without inter-clip transitions.
 
@@ -3143,6 +3194,7 @@ def create_clips_with_transitions(
         professional_hotwords,
         clip_subtitle_rewhisper,
         clip_subtitle_llm_refine,
+        clip_zh_subtitle_polish,
     )
 
 

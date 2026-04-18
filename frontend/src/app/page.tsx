@@ -99,6 +99,7 @@ const PREF_AUDIO_FADE_IN = "supoclip_pref_audio_fade_in";
 const PREF_AUDIO_FADE_OUT = "supoclip_pref_audio_fade_out";
 const PREF_CLIP_SUBTITLE_REWHISPER = "supoclip_pref_clip_subtitle_rewhisper";
 const PREF_CLIP_SUBTITLE_LLM_REFINE = "supoclip_pref_clip_subtitle_llm_refine";
+const PREF_CLIP_ZH_SUBTITLE_POLISH = "supoclip_pref_clip_zh_subtitle_polish";
 
 /** Aligned with backend MAX_CLIPS default (10). */
 const MAX_TARGET_CLIP_COUNT = 10;
@@ -165,6 +166,10 @@ export default function Home() {
     if (typeof window === "undefined") return true;
     return localStorage.getItem(PREF_CLIP_SUBTITLE_LLM_REFINE) !== "0";
   });
+  const [clipZhSubtitlePolish, setClipZhSubtitlePolish] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(PREF_CLIP_ZH_SUBTITLE_POLISH) !== "0";
+  });
   const [targetClipCount, setTargetClipCount] = useState("5");
   const [clipTheme, setClipTheme] = useState("");
 
@@ -183,6 +188,10 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(PREF_CLIP_SUBTITLE_LLM_REFINE, clipSubtitleLlmRefine ? "1" : "0");
   }, [clipSubtitleLlmRefine]);
+
+  useEffect(() => {
+    localStorage.setItem(PREF_CLIP_ZH_SUBTITLE_POLISH, clipZhSubtitlePolish ? "1" : "0");
+  }, [clipZhSubtitlePolish]);
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -628,6 +637,7 @@ export default function Home() {
           burn_clip_title_zh: burnClipTitleZh,
           clip_subtitle_rewhisper: clipSubtitleRewhisper,
           clip_subtitle_llm_refine: clipSubtitleLlmRefine,
+          clip_zh_subtitle_polish: clipZhSubtitlePolish,
           target_clip_count: Math.min(
             MAX_TARGET_CLIP_COUNT,
             Math.max(1, Number.parseInt(targetClipCount, 10) || 5),
@@ -1349,6 +1359,23 @@ export default function Home() {
                         checked={clipSubtitleLlmRefine}
                         onCheckedChange={setClipSubtitleLlmRefine}
                         disabled={isLoading || !clipSubtitleRewhisper}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 border rounded-lg bg-stone-50">
+                      <div className="flex items-center gap-3">
+                        <List className="w-4 h-4 text-violet-600" />
+                        <div>
+                          <h3 className="text-sm font-medium text-stone-900">中文成片字幕优化</h3>
+                          <p className="text-xs text-stone-500">
+                            按字重合并 Whisper 词为行，并可加行级标点与轻量纠错（静态模板；双语成片自动跳过；需 LLM 时与上一项联动）
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={clipZhSubtitlePolish}
+                        onCheckedChange={setClipZhSubtitlePolish}
+                        disabled={isLoading}
                       />
                     </div>
                     </>

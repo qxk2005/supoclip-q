@@ -5,10 +5,11 @@ Translate English subtitle phrases to Simplified Chinese for bilingual captions.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -555,3 +556,338 @@ async def apply_bilingual_phrase_translations(
 
     transcript_data["phrase_translations"] = merged
     cache_transcript_data(Path(video_path), transcript_data)
+
+
+# --- VideoLingo-inspired CJK clip subtitles: display-weight line merge + optional LLM polish ---
+
+_CJK_DISPLAY_WEIGHT_RE = re.compile(
+    r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]"
+)
+
+
+def calc_zh_display_weight(text: str) -> float:
+    """
+    Approximate on-screen footprint for subtitle layout (CJK-heavy clips).
+    Inspired by VideoLingo ``calc_len`` / weighted character counts.
+    """
+    w = 0.0
+    for ch in text or "":
+        if _CJK_DISPLAY_WEIGHT_RE.match(ch):
+            w += 1.25
+        elif ch.isascii() and not ch.isspace():
+            w += 0.55
+        elif ch.isspace():
+            w += 0.15
+        else:
+            w += 1.0
+    return w
+
+
+def _joined_cjk_line_text(words: List[Dict[str, Any]]) -> str:
+    parts = [(x.get("text") or "").strip() for x in words]
+    return "".join(p for p in parts if p)
+
+
+def _word_confidence(w: Dict[str, Any]) -> float:
+    v = w.get("probability", w.get("confidence"))
+    if v is None:
+        return 1.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def merge_whisper_words_into_zh_weighted_lines(
+    words: List[Dict[str, Any]],
+    *,
+    max_weight: float = 42.0,
+    pause_break_s: float = 0.42,
+    min_weight_before_pause_break: float = 10.0,
+) -> List[Dict[str, Any]]:
+    """
+    Merge adjacent Whisper tokens into fewer subtitle rows using a CJK display-weight budget
+    and coarse pause boundaries (VideoLingo-style coarse split before LLM polish).
+    """
+    cleaned = [w for w in words if (w.get("text") or "").strip()]
+    if not cleaned:
+        return []
+
+    groups: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+
+    for i, w in enumerate(cleaned):
+        prev = cleaned[i - 1] if i > 0 else None
+        gap = 0.0
+        if prev is not None:
+            try:
+                gap = float(w.get("start", 0.0)) - float(prev.get("end", 0.0))
+            except (TypeError, ValueError):
+                gap = 0.0
+
+        if (
+            current
+            and gap >= pause_break_s
+            and calc_zh_display_weight(_joined_cjk_line_text(current))
+            >= min_weight_before_pause_break
+        ):
+            groups.append(current)
+            current = []
+
+        tentative = current + [w]
+        tw = calc_zh_display_weight(_joined_cjk_line_text(tentative))
+        if not current:
+            current = tentative
+            continue
+        if tw <= max_weight:
+            current = tentative
+        else:
+            groups.append(current)
+            current = [w]
+
+    if current:
+        groups.append(current)
+
+    out: List[Dict[str, Any]] = []
+    for g in groups:
+        txt = _joined_cjk_line_text(g)
+        if not txt:
+            continue
+        confs = [_word_confidence(x) for x in g]
+        cmin = min(confs) if confs else 1.0
+        out.append(
+            {
+                "text": txt,
+                "start": float(g[0].get("start", 0.0)),
+                "end": float(g[-1].get("end", 0.0)),
+                "confidence": cmin,
+            }
+        )
+    return out
+
+
+def _normalize_for_zh_line_match(s: str) -> str:
+    t = (s or "").strip()
+    t = re.sub(r"[\s\u3000]+", "", t)
+    t = re.sub(
+        r"[，。！？、；：「」『』（）【】《》…,.!?:;\"'·（）—\[\]{}]",
+        "",
+        t,
+    )
+    return t
+
+
+def _zh_line_soft_match_ratio(a: str, b: str) -> float:
+    na = _normalize_for_zh_line_match(a)
+    nb = _normalize_for_zh_line_match(b)
+    if not na and not nb:
+        return 1.0
+    if not na or not nb:
+        return 0.0
+    return difflib.SequenceMatcher(None, na, nb).ratio()
+
+
+# 叠字语气词、口播衔接词重复（保守规则，不碰专有名词与强调式「好好」等双字）
+_SAME_ORAL_CHAR_3PLUS = re.compile(
+    r"([啊嗯呃哦噢欸诶呀嘛呢吧呐哼哈嘿])\1{2,}"
+)
+_DISCOURSE_DUP = re.compile(
+    r"(就是|然后|那个|这个|所以|但是|不过|对吧|是吧|好吧|对对)\1+"
+)
+
+
+def strip_obvious_zh_oral_redundancy(text: str) -> str:
+    """
+    Light, deterministic cleanup: collapse triple+ oral particles and doubled discourse fillers.
+    Runs before/after LLM line polish so subtitles stay readable even without a model call.
+    """
+    t = (text or "").strip()
+    if len(t) < 2:
+        return t
+    for _ in range(6):
+        t2 = _SAME_ORAL_CHAR_3PLUS.sub(r"\1", t)
+        t2 = _DISCOURSE_DUP.sub(r"\1", t2)
+        # 对对对、错错错 等三连以上单字叠用（保留「对对」等两字）
+        t2 = re.sub(r"([对错])\1{2,}", r"\1", t2)
+        if t2 == t:
+            break
+        t = t2
+    return t
+
+
+def _zh_polish_candidate_acceptable(baseline: str, candidate: str) -> bool:
+    """Allow slightly lower similarity when the line was legitimately shortened (filler removal)."""
+    b = (baseline or "").strip()
+    c = (candidate or "").strip()
+    if not c:
+        return False
+    r = _zh_line_soft_match_ratio(b, c)
+    if r >= 0.74:
+        return True
+    if len(b) >= 6 and len(c) <= int(len(b) * 0.92) and r >= 0.62:
+        return True
+    return False
+
+
+class ZhCaptionLinePolish(BaseModel):
+    i: int = Field(ge=0, description="0-based index within this batch")
+    text: str = Field(description="Polished single subtitle line")
+
+
+class ZhCaptionPolishBatch(BaseModel):
+    items: List[ZhCaptionLinePolish]
+
+
+_zh_caption_polish_agent: Optional[Agent] = None
+
+
+def _get_zh_caption_polish_agent() -> Agent:
+    global _zh_caption_polish_agent
+    if _zh_caption_polish_agent is None:
+        err = _missing_llm_key_error()
+        if err:
+            raise RuntimeError(err)
+        _zh_caption_polish_agent = Agent(
+            model=config.llm,
+            system_prompt=(
+                "你是中文短视频字幕编辑，面向竖屏短视频烧录字幕。输入为若干已按时间切好的字幕行（口语转写，可能缺标点或有 ASR 错字）。"
+                "任务：在保留事实与核心观点的前提下，让每行更「好读、好扫」——"
+                "（1）添加规范的简体中文标点（，。！？等），必要时拆成更自然的意群停顿；"
+                "（2）纠正明显同音错字，尊重术语表；"
+                "（3）适度删剪无信息增益的口癖与语气词（如叠用「啊」「嗯」「就是就是」「然后然后」、赘余的「那个」「这个」作拖延时）、"
+                "无意义的重复词与口吃式叠字，但勿删掉有语气的强调（如「非常非常」）或关键否定；"
+                "（4）若删剪后该行明显变短，须保证主干信息仍在，禁止删到语义残缺或空洞。"
+                "硬性约束：本批输出行数必须等于输入行数；索引 i 必须对应输入的第 i 行；禁止合并两行、禁止拆一行为两行；"
+                "禁止输出编号前缀或引号标签；除因删剪口癖/重复导致的变短外，每行字符数相对该行输入变化不超过 ±18%；"
+                "因合理删剪语气词与重复而变短时，总长不宜短于原行的 45%（除非原行几乎全是赘语）。"
+            ),
+            output_type=ZhCaptionPolishBatch,
+        )
+    return _zh_caption_polish_agent
+
+
+async def polish_zh_caption_lines_llm_async(
+    lines: List[str],
+    hotwords: Optional[str],
+) -> List[str]:
+    """Batch line-level polish; returns same-length list (falls back to input on failure)."""
+    if not lines:
+        return []
+    base = [str(x) for x in lines]
+    n = len(base)
+    out = list(base)
+    bs = 16
+    for start in range(0, n, bs):
+        chunk = base[start : start + bs]
+        cn = len(chunk)
+        try:
+            agent = _get_zh_caption_polish_agent()
+        except Exception as e:
+            logger.warning("Zh caption polish agent unavailable: %s", e)
+            return list(base)
+        parts = [
+            f"本批共 {cn} 行，局部索引为 0..{cn - 1}，每行格式: 索引<TAB>文本",
+            "\n".join(f"{i}\t{chunk[i]}" for i in range(cn)),
+            "请逐行输出润色结果：优先去掉无效语气词与无意义重复，使重点更突出；不要改变原意与事实。",
+        ]
+        if hotwords and hotwords.strip():
+            parts.append("术语/热词（请按此书写）：\n" + hotwords.strip()[:6000])
+        user_msg = "\n\n".join(parts)
+        try:
+            result = await agent.run(user_msg)
+            batch = getattr(result, "output", None)
+        except Exception as e:
+            logger.warning("Zh caption polish LLM call failed: %s", e)
+            continue
+        if not isinstance(batch, ZhCaptionPolishBatch) or not batch.items:
+            continue
+        for it in batch.items:
+            if not (0 <= it.i < cn):
+                continue
+            cand = (it.text or "").strip()
+            if not cand:
+                continue
+            g = start + it.i
+            raw = base[g]
+            if _zh_polish_candidate_acceptable(raw, cand):
+                out[g] = cand
+            else:
+                logger.info(
+                    "Zh caption polish line %s rejected (low similarity to baseline)",
+                    g,
+                )
+    return out
+
+
+def polish_zh_clip_subtitles_for_burn_sync(
+    words: List[Dict[str, Any]],
+    *,
+    hotwords: Optional[str] = None,
+    use_llm: bool = True,
+) -> Tuple[List[Dict[str, Any]], bool]:
+    """
+    For primarily-Chinese clip ASR words: merge into weighted lines, optionally LLM-polish,
+    return one pseudo-token per caption card (caller should use presized static layout).
+
+    When not applicable, returns (words, False) unchanged.
+    """
+    from .video_utils import _words_are_primarily_cjk
+
+    if not words:
+        return words, False
+    if not _words_are_primarily_cjk(words):
+        return words, False
+
+    try:
+        merged = merge_whisper_words_into_zh_weighted_lines(words)
+        if not merged:
+            return words, False
+
+        raw_texts = [str(m.get("text") or "").strip() for m in merged]
+        if not any(raw_texts):
+            return words, False
+
+        baseline_texts = [strip_obvious_zh_oral_redundancy(t) for t in raw_texts]
+        finals = list(baseline_texts)
+        if use_llm:
+            try:
+                polished = asyncio.run(
+                    polish_zh_caption_lines_llm_async(baseline_texts, hotwords)
+                )
+            except RuntimeError as e:
+                msg = str(e)
+                if "asyncio.run() cannot be called from a running event loop" in msg:
+                    logger.warning("Zh caption polish skipped (nested event loop): %s", e)
+                else:
+                    logger.warning("Zh caption polish asyncio.run failed: %s", e)
+                polished = list(baseline_texts)
+            except Exception as e:
+                logger.warning("Zh caption polish failed: %s", e)
+                polished = list(baseline_texts)
+            if len(polished) == len(baseline_texts):
+                for i, (base_line, cand) in enumerate(zip(baseline_texts, polished)):
+                    c = (cand or "").strip()
+                    if not c:
+                        continue
+                    if _zh_polish_candidate_acceptable(base_line, c):
+                        finals[i] = strip_obvious_zh_oral_redundancy(c)
+
+        out_words: List[Dict[str, Any]] = []
+        for i, (m, txt) in enumerate(zip(merged, finals)):
+            safe = (txt or "").strip() or raw_texts[i]
+            out_words.append(
+                {
+                    "text": safe,
+                    "start": float(m["start"]),
+                    "end": float(m["end"]),
+                    "confidence": float(m.get("confidence", 1.0) or 1.0),
+                }
+            )
+        return out_words, True
+    except Exception as e:
+        logger.warning(
+            "polish_zh_clip_subtitles_for_burn_sync failed; using original ASR words: %s",
+            e,
+            exc_info=True,
+        )
+        return words, False

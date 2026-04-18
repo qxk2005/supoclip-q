@@ -104,6 +104,7 @@ interface TaskDetails {
   burn_clip_title_zh?: boolean;
   clip_subtitle_rewhisper?: boolean;
   clip_subtitle_llm_refine?: boolean;
+  clip_zh_subtitle_polish?: boolean;
   target_clip_count?: number | null;
   clip_theme?: string | null;
 }
@@ -150,6 +151,8 @@ export default function TaskPage() {
   const [projectClipSubtitleRewhisper, setProjectClipSubtitleRewhisper] =
     useState(true);
   const [projectClipSubtitleLlmRefine, setProjectClipSubtitleLlmRefine] =
+    useState(true);
+  const [projectClipZhSubtitlePolish, setProjectClipZhSubtitlePolish] =
     useState(true);
   const [isApplyingSettings, setIsApplyingSettings] = useState(false);
   const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
@@ -210,6 +213,7 @@ export default function TaskPage() {
         setProjectBurnClipTitleZh(taskData.burn_clip_title_zh !== false);
         setProjectClipSubtitleRewhisper(taskData.clip_subtitle_rewhisper !== false);
         setProjectClipSubtitleLlmRefine(taskData.clip_subtitle_llm_refine !== false);
+        setProjectClipZhSubtitlePolish(taskData.clip_zh_subtitle_polish !== false);
 
         // Fetch clips if task is completed or processing (incremental clips)
         if (taskData.status === "completed" || taskData.status === "processing") {
@@ -600,6 +604,7 @@ export default function TaskPage() {
           burn_clip_title_zh: projectBurnClipTitleZh,
           clip_subtitle_rewhisper: projectClipSubtitleRewhisper,
           clip_subtitle_llm_refine: projectClipSubtitleLlmRefine,
+          clip_zh_subtitle_polish: projectClipZhSubtitlePolish,
         }),
       });
       if (!response.ok) {
@@ -1544,6 +1549,21 @@ export default function TaskPage() {
                   热词 + 大模型轻量润色（不改时间戳）
                   <span className="block text-xs text-gray-500 font-normal mt-0.5">
                     需配置 LLM；仅做小范围用字修正。依赖上一项「片段级重识别」。
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={projectClipZhSubtitlePolish}
+                  onChange={(e) => setProjectClipZhSubtitlePolish(e.target.checked)}
+                  className="rounded mt-0.5"
+                />
+                <span>
+                  中文成片字幕优化（断句与标点）
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    参考 VideoLingo 思路：字重合并 Whisper 词为行，并可做行级标点与轻纠错；静态模板生效，双语成片自动跳过。
                   </span>
                 </span>
               </label>
